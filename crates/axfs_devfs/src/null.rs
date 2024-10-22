@@ -21,7 +21,8 @@ impl VfsNodeOps for NullDev {
             VfsNodeType::CharDevice,
             0,
             0,
-        ))
+            Some(1),
+            ))
     }
 
     fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {

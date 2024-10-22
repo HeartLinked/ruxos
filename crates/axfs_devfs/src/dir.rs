@@ -11,7 +11,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::{Arc, Weak};
 use axfs_vfs::{VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType};
 use axfs_vfs::{VfsError, VfsResult};
-use spin::RwLock;
+use spin::rwlock::RwLock;
 
 /// The directory node in the device filesystem.
 ///
@@ -19,6 +19,7 @@ use spin::RwLock;
 pub struct DirNode {
     parent: RwLock<Weak<dyn VfsNodeOps>>,
     children: RwLock<BTreeMap<&'static str, VfsNodeRef>>,
+    attr: RwLock<Option<VfsNodeAttr>>,
 }
 
 impl DirNode {
@@ -27,6 +28,7 @@ impl DirNode {
         Arc::new(Self {
             parent: RwLock::new(parent),
             children: RwLock::new(BTreeMap::new()),
+            attr: RwLock::new(None),
         })
     }
 
@@ -50,7 +52,11 @@ impl DirNode {
 
 impl VfsNodeOps for DirNode {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new_dir(4096, 0))
+        let mut vfsattr = self.attr.write();
+        if vfsattr.is_none() {
+            vfsattr.replace(VfsNodeAttr::new_dir(4096, 0, None));
+        }
+        Ok(vfsattr.unwrap())
     }
 
     fn parent(&self) -> Option<VfsNodeRef> {

@@ -7,6 +7,11 @@
  *   See the Mulan PSL v2 for more details.
  */
 
+use core::num;
+
+use alloc::vec::Vec;
+use spin::RwLock;
+
 /// Filesystem attributes.
 ///
 /// Currently not used.
@@ -25,6 +30,8 @@ pub struct VfsNodeAttr {
     size: u64,
     /// Number of 512B blocks allocated.
     blocks: u64,
+    /// inode number
+    ino: u64,
 }
 
 bitflags::bitflags! {
@@ -205,36 +212,75 @@ impl VfsNodeType {
     }
 }
 
+lazy_static::lazy_static! {
+    /// Global file descriptor table protected by a read-write lock.
+    pub static ref INODE_TABLE: RwLock<(Vec<u64>, u64)> = {
+        let mut inodetable = Vec::new();
+        inodetable.push(1);
+        inodetable.push(2);
+        inodetable.push(3);
+        RwLock::new((inodetable,4))
+    };
+}
+
+pub(crate) fn iunique(ino: Option<u64>) -> u64 {
+    match ino {
+        Some(ino) => {
+            let mut inodes = INODE_TABLE.write();
+            let mut now_inode = ino;
+            while inodes.0.iter().any(|&i| i == now_inode) {
+                now_inode += 1;
+            }
+            inodes.0.push(now_inode);
+            now_inode
+        }
+        None => {
+            let mut inodes = INODE_TABLE.write();
+            let mut now_inode = inodes.1;
+            while inodes.0.iter().any(|&i| i == now_inode) {
+                now_inode += 1;
+            }
+            inodes.0.push(now_inode);
+            inodes.1 = now_inode+1;
+            now_inode
+        }
+    }   
+}
+
 impl VfsNodeAttr {
     /// Creates a new `VfsNodeAttr` with the given permission mode, type, size
-    /// and number of blocks.
-    pub const fn new(mode: VfsNodePerm, ty: VfsNodeType, size: u64, blocks: u64) -> Self {
+    /// inode number and number of blocks.
+    /// if node number is none, means fs do not have inode then vfs will allocate it
+    pub fn new(mode: VfsNodePerm, ty: VfsNodeType, size: u64, blocks: u64, ino: Option<u64>) -> Self {
         Self {
             mode,
             ty,
             size,
             blocks,
+            ino: iunique(ino),
         }
     }
 
     /// Creates a new `VfsNodeAttr` for a file, with the default file permission.
-    pub const fn new_file(size: u64, blocks: u64) -> Self {
+    pub fn new_file(size: u64, blocks: u64, ino: Option<u64>) -> Self {
         Self {
             mode: VfsNodePerm::default_file(),
             ty: VfsNodeType::File,
             size,
             blocks,
+            ino: iunique(ino),
         }
     }
 
     /// Creates a new `VfsNodeAttr` for a directory, with the default directory
     /// permission.
-    pub const fn new_dir(size: u64, blocks: u64) -> Self {
+    pub fn new_dir(size: u64, blocks: u64, ino: Option<u64>) -> Self {
         Self {
             mode: VfsNodePerm::default_dir(),
             ty: VfsNodeType::Dir,
             size,
             blocks,
+            ino: iunique(ino),
         }
     }
 
@@ -271,6 +317,11 @@ impl VfsNodeAttr {
     /// Whether the node is a directory.
     pub const fn is_dir(&self) -> bool {
         self.ty.is_dir()
+    }
+
+    /// inode number of the file or directory
+    pub const fn ino(&self) -> u64 {
+        self.ino
     }
 }
 

@@ -14,7 +14,7 @@ use axfs_vfs::{VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
 use axsync::Mutex;
 use fatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFrom, Write};
-
+use spin::rwlock::RwLock;
 use crate::dev::Disk;
 
 const BLOCK_SIZE: usize = 512;
@@ -24,8 +24,8 @@ pub struct FatFileSystem {
     root_dir: UnsafeCell<Option<VfsNodeRef>>,
 }
 
-pub struct FileWrapper<'a>(Mutex<File<'a, Disk, NullTimeProvider, LossyOemCpConverter>>);
-pub struct DirWrapper<'a>(Dir<'a, Disk, NullTimeProvider, LossyOemCpConverter>);
+pub struct FileWrapper<'a>(Mutex<File<'a, Disk, NullTimeProvider, LossyOemCpConverter>>, RwLock<Option<VfsNodeAttr>>);
+pub struct DirWrapper<'a>(Dir<'a, Disk, NullTimeProvider, LossyOemCpConverter>, RwLock<Option<VfsNodeAttr>>);
 
 unsafe impl Sync for FatFileSystem {}
 unsafe impl Send for FatFileSystem {}
@@ -63,11 +63,11 @@ impl FatFileSystem {
     }
 
     fn new_file(file: File<'_, Disk, NullTimeProvider, LossyOemCpConverter>) -> Arc<FileWrapper> {
-        Arc::new(FileWrapper(Mutex::new(file)))
+        Arc::new(FileWrapper(Mutex::new(file), RwLock::new(None)))
     }
 
     fn new_dir(dir: Dir<'_, Disk, NullTimeProvider, LossyOemCpConverter>) -> Arc<DirWrapper> {
-        Arc::new(DirWrapper(dir))
+        Arc::new(DirWrapper(dir, RwLock::new(None)))
     }
 }
 
@@ -83,7 +83,11 @@ impl VfsNodeOps for FileWrapper<'static> {
         let blocks = (size + BLOCK_SIZE as u64 - 1) / BLOCK_SIZE as u64;
         // FAT fs doesn't support permissions, we just set everything to 755
         let perm = VfsNodePerm::from_bits_truncate(0o755);
-        Ok(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks))
+        let mut vfsattr = self.1.write();
+        if vfsattr.is_none() {
+            vfsattr.replace(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks, None));
+        }
+        Ok(vfsattr.unwrap())
     }
 
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
@@ -129,13 +133,17 @@ impl VfsNodeOps for DirWrapper<'static> {
     axfs_vfs::impl_vfs_dir_default! {}
 
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        // FAT fs doesn't support permissions, we just set everything to 755
-        Ok(VfsNodeAttr::new(
-            VfsNodePerm::from_bits_truncate(0o755),
-            VfsNodeType::Dir,
-            BLOCK_SIZE as u64,
-            1,
-        ))
+        let mut vfsattr = self.1.write();
+        if vfsattr.is_none() {
+            vfsattr.replace(VfsNodeAttr::new(
+                VfsNodePerm::from_bits_truncate(0o755),
+                VfsNodeType::Dir,
+                BLOCK_SIZE as u64,
+                1,
+                None,
+            ));
+        }
+        Ok(vfsattr.unwrap())
     }
 
     fn parent(&self) -> Option<VfsNodeRef> {

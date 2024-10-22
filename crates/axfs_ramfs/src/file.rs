@@ -9,26 +9,32 @@
 
 use alloc::vec::Vec;
 use axfs_vfs::{impl_vfs_non_dir_default, VfsNodeAttr, VfsNodeOps, VfsResult};
-use spin::RwLock;
+use spin::rwlock::RwLock;
 
 /// The file node in the RAM filesystem.
 ///
 /// It implements [`axfs_vfs::VfsNodeOps`].
 pub struct FileNode {
     content: RwLock<Vec<u8>>,
+    attr: RwLock<Option<VfsNodeAttr>>,
 }
 
 impl FileNode {
     pub(super) const fn new() -> Self {
         Self {
             content: RwLock::new(Vec::new()),
+            attr: RwLock::new(None),
         }
     }
 }
 
 impl VfsNodeOps for FileNode {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        Ok(VfsNodeAttr::new_file(self.content.read().len() as _, 0))
+        let mut vfsattr = self.attr.write();
+        if vfsattr.is_none() {
+            vfsattr.replace(VfsNodeAttr::new_file(self.content.read().len() as _, 0, None));
+        }
+        Ok(vfsattr.unwrap())
     }
 
     fn truncate(&self, size: u64) -> VfsResult {

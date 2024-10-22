@@ -28,7 +28,7 @@ pub struct MountPoint {
     fs: Arc<dyn VfsOps>,
 }
 
-struct RootDirectory {
+pub struct RootDirectory {
     main_fs: Arc<dyn VfsOps>,
     mounts: Vec<MountPoint>,
 }
@@ -199,7 +199,7 @@ pub(crate) fn absolute_path(path: &str) -> AxResult<String> {
     }
 }
 
-pub(crate) fn lookup(dir: Option<&VfsNodeRef>, path: &str) -> AxResult<VfsNodeRef> {
+pub fn lookup(dir: Option<&VfsNodeRef>, path: &str) -> AxResult<VfsNodeRef> {
     if path.is_empty() {
         return ax_err!(NotFound);
     }
@@ -211,13 +211,17 @@ pub(crate) fn lookup(dir: Option<&VfsNodeRef>, path: &str) -> AxResult<VfsNodeRe
     }
 }
 
-pub(crate) fn create_file(dir: Option<&VfsNodeRef>, path: &str) -> AxResult<VfsNodeRef> {
+pub fn create_file(dir: Option<&VfsNodeRef>, path: &str) -> AxResult<VfsNodeRef> {
     if path.is_empty() {
         return ax_err!(NotFound);
     } else if path.ends_with('/') {
         return ax_err!(NotADirectory);
     }
     let parent = parent_node_of(dir, path);
+    let lhw_debug_dir = match dir {
+        Some(_) => 1,
+        None => 0,
+    };
     parent.create(path, VfsNodeType::File)?;
     parent.lookup(path)
 }

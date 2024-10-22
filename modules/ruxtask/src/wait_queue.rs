@@ -10,6 +10,7 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use spinlock::SpinRaw;
+use log::debug;
 
 use crate::{AxRunQueue, AxTaskRef, CurrentTask, RUN_QUEUE};
 
