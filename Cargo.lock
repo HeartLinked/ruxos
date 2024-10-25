@@ -1583,17 +1583,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ruxconsole"
-version = "0.1.0"
-dependencies = [
- "axalloc",
- "driver_console",
- "driver_virtio",
- "spinlock",
- "virtio-drivers",
-]
-
-[[package]]
 name = "ruxdisplay"
 version = "0.1.0"
 dependencies = [

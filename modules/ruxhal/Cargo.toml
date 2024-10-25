@@ -12,6 +12,7 @@ homepage = "https://github.com/syswonder/ruxos"
 repository = "https://github.com/syswonder/ruxos/tree/main/modules/ruxhal"
 
 [features]
+virtio_hal = ["driver_virtio","virtio-drivers","axalloc"]
 smp = []
 alloc = []
 fp_simd = []

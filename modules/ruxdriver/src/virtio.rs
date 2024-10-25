@@ -13,8 +13,8 @@ use driver_common::{BaseDriverOps, DevResult, DeviceType};
 use ruxhal::mem::phys_to_virt;
 use crate::{drivers::DriverProbe, AxDeviceEnum};
 
-#[cfg(any(bus = "pci", net_dev = "virtio-net", block_dev = "virtio-blk", display_dev = "virtio-gpu", _9p_dev = "virtio-9p"))]
-use ruxhal::virtio_hal::VirtIoHalImpl;
+#[cfg(feature = "virtio_hal")]
+use ruxhal::virtio::virtio_hal::VirtIoHalImpl;
 
 cfg_if! {
     if #[cfg(bus = "pci")] {
