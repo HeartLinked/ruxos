@@ -152,6 +152,7 @@ pub fn enable_interrupt() {
 
 
 pub fn irq_handler() {
+    #[cfg(feature = "irq")]
     unsafe {
         if let Some(ref mut uart_inner) = UART.inner {
             let mut uart = uart_inner.lock();
@@ -164,7 +165,9 @@ pub fn irq_handler() {
     }
 }
 
+
 pub fn ack_interrupt() {
+    #[cfg(feature = "irq")]
     unsafe {
         if let Some(ref mut uart_inner) = UART.inner {
             let mut uart = uart_inner.lock();

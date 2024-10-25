@@ -45,10 +45,9 @@ LOG ?= debug
 V ?=
 
 # App options
-A ?= apps/fs/shell
-# A ?= apps/c/helloworld
+A ?= apps/c/helloworld
 APP ?= $(A)
-FEATURES ?= virtio_console irq
+FEATURES ?= virtio_console
 # FEATURES ?=
 APP_FEATURES ?=
 
