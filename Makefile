@@ -48,7 +48,6 @@ V ?=
 A ?= apps/c/helloworld
 APP ?= $(A)
 FEATURES ?=
-# FEATURES ?=
 APP_FEATURES ?=
 
 # QEMU options
