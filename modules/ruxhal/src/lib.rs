@@ -44,7 +44,7 @@
 extern crate log;
 
 mod platform;
-
+pub mod virtio;
 pub mod arch;
 pub mod cpu;
 pub mod mem;

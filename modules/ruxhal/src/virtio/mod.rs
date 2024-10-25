@@ -6,18 +6,7 @@
  *   THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
  *   See the Mulan PSL v2 for more details.
  */
-
-mod boot;
-
-pub mod generic_timer;
-#[cfg(not(platform_family = "aarch64-raspi"))]
-pub mod psci;
-
-#[cfg(feature = "irq")]
-pub mod gic;
-
-#[cfg(not(any(platform_family = "aarch64-bsta1000b", feature = "virtio_console")))]
-pub mod pl011;
-
-#[cfg(feature = "rtc")]
-pub mod pl031;
+#[cfg(feature = "virtio-drivers")]
+pub mod virtio_hal;
+#[cfg(feature = "virtio_console")]
+pub mod virtio_console;
