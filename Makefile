@@ -47,7 +47,7 @@ V ?=
 # App options
 A ?= apps/c/helloworld
 APP ?= $(A)
-FEATURES ?= virtio_console
+FEATURES ?=
 # FEATURES ?=
 APP_FEATURES ?=
 
