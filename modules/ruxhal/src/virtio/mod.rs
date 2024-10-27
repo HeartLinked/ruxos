@@ -6,6 +6,8 @@
  *   THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
  *   See the Mulan PSL v2 for more details.
  */
+
+//! ruxos and virtio code related mod definition
 #[cfg(feature = "virtio_console")]
 pub mod virtio_console;
 #[cfg(feature = "virtio_hal")]

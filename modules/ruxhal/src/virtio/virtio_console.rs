@@ -25,8 +25,10 @@ struct RxRingBuffer {
     empty: bool,
 }
 
+/// The UART RxRingBuffer
 #[cfg(feature = "irq")]
 impl RxRingBuffer {
+    /// Create a new ring buffer
     const fn new() -> Self {
         RxRingBuffer {
             buffer: [0_u8; BUFFER_SIZE],
@@ -36,6 +38,7 @@ impl RxRingBuffer {
         }
     }
 
+    /// Push a byte into the buffer
     fn push(&mut self, n: u8) {
         if self.tail != self.head || self.empty {
             self.buffer[self.tail] = n;
@@ -44,6 +47,7 @@ impl RxRingBuffer {
         }
     }
 
+    /// Pop a byte from the buffer
     fn pop(&mut self) -> Option<u8> {
         if self.empty {
             None
@@ -58,6 +62,7 @@ impl RxRingBuffer {
     }
 }
 
+/// The UART driver
 struct UartDrv {
     inner: Option<SpinNoIrq<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>>>,
     buffer: [u8; 20000],
@@ -67,6 +72,7 @@ struct UartDrv {
     addr: usize,
 }
 
+/// The UART driver instance
 static mut UART: UartDrv = UartDrv {
     inner: None,
     buffer: [0; 20000],
@@ -76,6 +82,7 @@ static mut UART: UartDrv = UartDrv {
     addr: 0,
 };
 
+/// Writes a byte to the console.
 pub fn putchar(c: u8) {
     unsafe {
         if let Some(ref mut uart_inner) = UART.inner {
@@ -108,6 +115,7 @@ pub fn putchar(c: u8) {
     }
 }
 
+/// Reads a byte from the console.
 pub fn getchar() -> Option<u8> {
     unsafe {
         #[cfg(feature = "irq")]
@@ -122,6 +130,7 @@ pub fn getchar() -> Option<u8> {
     }
 }
 
+/// probe virtio console directly
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
     for reg in ruxconfig::VIRTIO_MMIO_REGIONS {
@@ -137,7 +146,7 @@ pub fn directional_probing() {
     info!("Output now redirected to VirtIO Console!");
 }
 
-// todo: add platform specific interrupt handling
+/// enable virtio console interrupt
 pub fn enable_interrupt() {
     #[cfg(all(feature = "irq", target_arch = "aarch64"))]
     {
@@ -150,6 +159,7 @@ pub fn enable_interrupt() {
     }
 }
 
+/// virtio console interrupt handler
 pub fn irq_handler() {
     #[cfg(feature = "irq")]
     unsafe {
@@ -164,6 +174,7 @@ pub fn irq_handler() {
     }
 }
 
+/// Acknowledge the interrupt
 pub fn ack_interrupt() {
     #[cfg(feature = "irq")]
     unsafe {
@@ -175,10 +186,12 @@ pub fn ack_interrupt() {
     }
 }
 
+/// Check if the address is the probe address
 pub fn is_probe(addr: usize) -> bool {
     unsafe { addr == UART.addr }
 }
 
+/// Probe the virtio console
 fn probe_mmio(
     mmio_base: usize,
     mmio_size: usize,
@@ -201,4 +214,5 @@ fn probe_mmio(
     None
 }
 
+/// Virtio transport type
 type VirtIoTransport = driver_virtio::MmioTransport;
