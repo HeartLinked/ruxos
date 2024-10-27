@@ -10,6 +10,7 @@
 use core::marker::PhantomData;
 use cfg_if::cfg_if;
 use driver_common::{BaseDriverOps, DevResult, DeviceType};
+#[cfg(bus = "mmio")]
 use ruxhal::mem::phys_to_virt;
 use crate::{drivers::DriverProbe, AxDeviceEnum};
 

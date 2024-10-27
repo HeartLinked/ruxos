@@ -139,8 +139,11 @@ pub fn directional_probing() {
     info!("Output now redirected to VirtIO Console!");
 }
 
+
+
+// todo: add platform specific interrupt handling
 pub fn enable_interrupt() {
-    #[cfg(feature = "irq")] {
+    #[cfg(all(feature = "irq",target_arch = "aarch64"))] {
         info!("Initiating VirtIO Console interrupt ...");
         info!("IRQ ID: {}", crate::platform::irq::UART_IRQ_NUM);
         crate::irq::register_handler(crate::platform::irq::UART_IRQ_NUM, irq_handler);
@@ -177,7 +180,7 @@ pub fn ack_interrupt() {
 }
 
 pub fn is_probe(addr: usize) -> bool {
-    unsafe { return addr == UART.addr; }
+    unsafe { addr == UART.addr }
 }
 
 

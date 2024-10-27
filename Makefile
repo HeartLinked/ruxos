@@ -37,11 +37,11 @@
 #     - `MUSL`: Link C app with musl libc
 
 # General options
-ARCH ?= aarch64
+ARCH ?= x86_64
 PLATFORM ?=
 SMP ?= 1
-MODE ?= reldebug
-LOG ?= debug
+MODE ?= release
+LOG ?= warn
 V ?=
 
 # App options
@@ -51,7 +51,6 @@ FEATURES ?=
 APP_FEATURES ?=
 
 # QEMU options
-CONSOLE ?= n
 BLK ?= n
 NET ?= n
 GRAPHIC ?= n
@@ -75,8 +74,8 @@ IP ?= 10.0.2.15
 GW ?= 10.0.2.2
 
 # args and envs
-ARGS ?= 
-ENVS ?= 
+ARGS ?=
+ENVS ?=
 
 # Libc options
 MUSL ?= n
