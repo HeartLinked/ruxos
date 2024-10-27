@@ -13,7 +13,6 @@
 #![feature(doc_auto_cfg)]
 #![feature(const_trait_impl)]
 
-
 #[doc(no_inline)]
 pub use driver_common::{BaseDriverOps, DevError, DevResult, DeviceType};
 

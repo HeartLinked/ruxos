@@ -8,10 +8,9 @@
  */
 
 use crate::as_dev_err;
-use driver_console::ConsoleDriverOps;
 use driver_common::{BaseDriverOps, DevResult, DeviceType};
+use driver_console::ConsoleDriverOps;
 use virtio_drivers::{device::console::VirtIOConsole as InnerDev, transport::Transport, Hal};
-
 
 /// VirtIO console device
 pub struct VirtIoConsoleDev<H: Hal, T: Transport> {
@@ -20,7 +19,6 @@ pub struct VirtIoConsoleDev<H: Hal, T: Transport> {
 
 unsafe impl<H: Hal, T: Transport> Send for VirtIoConsoleDev<H, T> {}
 unsafe impl<H: Hal, T: Transport> Sync for VirtIoConsoleDev<H, T> {}
-
 
 impl<H: Hal, T: Transport> VirtIoConsoleDev<H, T> {
     /// Creates a new driver instance and initializes the device, or returns
@@ -42,14 +40,17 @@ impl<H: Hal, T: Transport> BaseDriverOps for VirtIoConsoleDev<H, T> {
     }
 }
 
-
 impl<H: Hal, T: Transport> ConsoleDriverOps for VirtIoConsoleDev<H, T> {
     fn putchar(&mut self, c: u8) {
-        self.inner.send(c).expect("VirtConsole: failed to send char");
+        self.inner
+            .send(c)
+            .expect("VirtConsole: failed to send char");
     }
 
     fn getchar(&mut self) -> Option<u8> {
-        self.inner.recv(true).expect("VirtConsole: failed to recv char")
+        self.inner
+            .recv(true)
+            .expect("VirtConsole: failed to recv char")
     }
 
     fn ack_interrupt(&mut self) -> DevResult<bool> {

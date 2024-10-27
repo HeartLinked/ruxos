@@ -25,25 +25,25 @@
 
 #[cfg(feature = "block")]
 mod blk;
+#[cfg(feature = "console")]
+mod console;
 #[cfg(feature = "gpu")]
 mod gpu;
 #[cfg(feature = "net")]
 mod net;
 #[cfg(feature = "v9p")]
 mod v9p;
-#[cfg(feature = "console")]
-mod console;
 
 #[cfg(feature = "block")]
 pub use self::blk::VirtIoBlkDev;
+#[cfg(feature = "console")]
+pub use self::console::VirtIoConsoleDev;
 #[cfg(feature = "gpu")]
 pub use self::gpu::VirtIoGpuDev;
 #[cfg(feature = "net")]
 pub use self::net::VirtIoNetDev;
 #[cfg(feature = "v9p")]
 pub use self::v9p::VirtIo9pDev;
-#[cfg(feature = "console")]
-pub use self::console::VirtIoConsoleDev;
 
 pub use virtio_drivers::transport::pci::bus as pci;
 pub use virtio_drivers::transport::{mmio::MmioTransport, pci::PciTransport, Transport};

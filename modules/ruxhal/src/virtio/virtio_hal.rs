@@ -1,8 +1,8 @@
-use core::ptr::NonNull;
-use virtio_drivers::{BufferDirection, PhysAddr};
-use axalloc::global_allocator;
-use driver_virtio::VirtIoHal;
 use crate::mem::{direct_virt_to_phys, phys_to_virt, virt_to_phys};
+use axalloc::global_allocator;
+use core::ptr::NonNull;
+use driver_virtio::VirtIoHal;
+use virtio_drivers::{BufferDirection, PhysAddr};
 
 pub struct VirtIoHalImpl;
 

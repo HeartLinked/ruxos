@@ -8,11 +8,11 @@
  */
 
 //! virtio_console
-use driver_virtio::VirtIoConsoleDev;
-use spinlock::SpinNoIrq;
-use driver_console::ConsoleDriverOps;
 use crate::mem::phys_to_virt;
 use crate::virtio::virtio_hal::VirtIoHalImpl;
+use driver_console::ConsoleDriverOps;
+use driver_virtio::VirtIoConsoleDev;
+use spinlock::SpinNoIrq;
 
 #[cfg(feature = "irq")]
 const BUFFER_SIZE: usize = 128;
@@ -59,7 +59,7 @@ impl RxRingBuffer {
 }
 
 struct UartDrv {
-    inner: Option<SpinNoIrq<VirtIoConsoleDev<VirtIoHalImpl,VirtIoTransport>>>,
+    inner: Option<SpinNoIrq<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>>>,
     buffer: [u8; 20000],
     #[cfg(feature = "irq")]
     irq_buffer: SpinNoIrq<RxRingBuffer>,
@@ -67,7 +67,7 @@ struct UartDrv {
     addr: usize,
 }
 
-static mut UART : UartDrv = UartDrv {
+static mut UART: UartDrv = UartDrv {
     inner: None,
     buffer: [0; 20000],
     #[cfg(feature = "irq")]
@@ -108,7 +108,6 @@ pub fn putchar(c: u8) {
     }
 }
 
-
 pub fn getchar() -> Option<u8> {
     unsafe {
         #[cfg(feature = "irq")]
@@ -116,13 +115,12 @@ pub fn getchar() -> Option<u8> {
         #[cfg(not(feature = "irq"))]
         if let Some(ref mut uart_inner) = UART.inner {
             let mut uart = uart_inner.lock();
-            return uart.getchar()
+            return uart.getchar();
         } else {
             None
         }
     }
 }
-
 
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
@@ -139,11 +137,10 @@ pub fn directional_probing() {
     info!("Output now redirected to VirtIO Console!");
 }
 
-
-
 // todo: add platform specific interrupt handling
 pub fn enable_interrupt() {
-    #[cfg(all(feature = "irq",target_arch = "aarch64"))] {
+    #[cfg(all(feature = "irq", target_arch = "aarch64"))]
+    {
         info!("Initiating VirtIO Console interrupt ...");
         info!("IRQ ID: {}", crate::platform::irq::UART_IRQ_NUM);
         crate::irq::register_handler(crate::platform::irq::UART_IRQ_NUM, irq_handler);
@@ -152,7 +149,6 @@ pub fn enable_interrupt() {
         info!("Interrupt enabled!");
     }
 }
-
 
 pub fn irq_handler() {
     #[cfg(feature = "irq")]
@@ -168,13 +164,13 @@ pub fn irq_handler() {
     }
 }
 
-
 pub fn ack_interrupt() {
     #[cfg(feature = "irq")]
     unsafe {
         if let Some(ref mut uart_inner) = UART.inner {
             let mut uart = uart_inner.lock();
-            uart.ack_interrupt().expect("Virtio_console ack interrupt error");
+            uart.ack_interrupt()
+                .expect("Virtio_console ack interrupt error");
         }
     }
 }
@@ -183,27 +179,26 @@ pub fn is_probe(addr: usize) -> bool {
     unsafe { addr == UART.addr }
 }
 
-
-fn probe_mmio(mmio_base: usize, mmio_size: usize) -> Option<VirtIoConsoleDev<VirtIoHalImpl,VirtIoTransport>> {
+fn probe_mmio(
+    mmio_base: usize,
+    mmio_size: usize,
+) -> Option<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>> {
     let base_vaddr = phys_to_virt(mmio_base.into());
     if let Some((ty, transport)) =
         driver_virtio::probe_mmio_device(base_vaddr.as_mut_ptr(), mmio_size)
     {
         if ty == driver_common::DeviceType::Char {
-            info!("VirtIO Console found at {:#x} size {:#x}", mmio_base, mmio_size);
+            info!(
+                "VirtIO Console found at {:#x} size {:#x}",
+                mmio_base, mmio_size
+            );
             return match VirtIoConsoleDev::try_new(transport) {
-                Ok(dev) => {
-                    Some(dev)
-                },
-                Err(_e) => {
-                    None
-                }
-            }
+                Ok(dev) => Some(dev),
+                Err(_e) => None,
+            };
         }
     }
     None
 }
 
 type VirtIoTransport = driver_virtio::MmioTransport;
-
-

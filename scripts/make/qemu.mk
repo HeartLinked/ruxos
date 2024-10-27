@@ -27,7 +27,6 @@ qemu_args-riscv64 := \
 qemu_args-aarch64 := \
   -cpu cortex-a72 \
   -machine virt \
-  -dtb dump.dtb \
   -kernel $(OUT_BIN)
 
 

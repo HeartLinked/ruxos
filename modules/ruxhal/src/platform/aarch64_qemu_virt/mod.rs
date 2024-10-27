@@ -18,10 +18,10 @@ pub mod irq {
 }
 
 pub mod console {
-    #[cfg(feature = "virtio_console")]
-    pub use crate::virtio::virtio_console::*;
     #[cfg(not(feature = "virtio_console"))]
     pub use crate::platform::aarch64_common::pl011::*;
+    #[cfg(feature = "virtio_console")]
+    pub use crate::virtio::virtio_console::*;
 }
 
 pub mod time {
@@ -77,8 +77,6 @@ pub fn platform_init() {
     #[cfg(feature = "virtio_console")]
     crate::virtio::virtio_console::enable_interrupt();
 }
-
-
 
 /// Initializes the platform devices for secondary CPUs.
 #[cfg(feature = "smp")]

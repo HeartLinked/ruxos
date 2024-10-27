@@ -7,12 +7,12 @@
  *   See the Mulan PSL v2 for more details.
  */
 
-use core::marker::PhantomData;
+use crate::{drivers::DriverProbe, AxDeviceEnum};
 use cfg_if::cfg_if;
+use core::marker::PhantomData;
 use driver_common::{BaseDriverOps, DevResult, DeviceType};
 #[cfg(bus = "mmio")]
 use ruxhal::mem::phys_to_virt;
-use crate::{drivers::DriverProbe, AxDeviceEnum};
 
 #[cfg(feature = "virtio_hal")]
 use ruxhal::virtio::virtio_hal::VirtIoHalImpl;

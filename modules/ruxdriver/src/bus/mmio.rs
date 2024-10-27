@@ -7,10 +7,10 @@
  *   See the Mulan PSL v2 for more details.
  */
 
-#[cfg(all(feature = "virtio_console", feature = "virtio"))]
-use ruxhal::virtio::virtio_console;
 #[allow(unused_imports)]
 use crate::{prelude::*, AllDevices};
+#[cfg(all(feature = "virtio_console", feature = "virtio"))]
+use ruxhal::virtio::virtio_console;
 
 impl AllDevices {
     pub(crate) fn probe_bus_devices(&mut self) {
