@@ -19,9 +19,6 @@ pub const MAX_IRQ_COUNT: usize = 1024;
 /// The timer IRQ number.
 pub const TIMER_IRQ_NUM: usize = translate_irq(14, InterruptType::PPI).unwrap();
 
-/// The UART IRQ number.
-pub const UART_IRQ_NUM: usize = translate_irq(ruxconfig::UART_IRQ, InterruptType::SPI).unwrap();
-
 const GICD_BASE: PhysAddr = PhysAddr::from(ruxconfig::GICD_PADDR);
 const GICC_BASE: PhysAddr = PhysAddr::from(ruxconfig::GICC_PADDR);
 

@@ -37,17 +37,17 @@
 #     - `MUSL`: Link C app with musl libc
 
 # General options
-ARCH ?= x86_64
+ARCH ?= aarch64
 PLATFORM ?=
 SMP ?= 1
-MODE ?= release
-LOG ?= warn
+MODE ?= reldebug
+LOG ?= info
 V ?=
 
 # App options
-A ?= apps/c/helloworld
+A ?= apps/fs/shell
 APP ?= $(A)
-FEATURES ?=
+FEATURES ?= virtio_console irq
 APP_FEATURES ?=
 
 # QEMU options

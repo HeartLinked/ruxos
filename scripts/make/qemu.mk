@@ -31,7 +31,7 @@ qemu_args-aarch64 := \
 
 
 qemu_args-y := -m 2G -smp $(SMP) $(qemu_args-$(ARCH)) \
-  -append ";$(ARGS);$(ENVS)" \
+  -append ";$(ARGS);$(ENVS)"
 
 qemu_args-$(CONSOLE) += \
   -global virtio-mmio.force-legacy=false \

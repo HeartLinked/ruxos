@@ -101,13 +101,7 @@ pub fn putchar(c: u8) {
                 warn!("######################### The above content is printed from buffer! #########################");
             }
             let mut uart = uart_inner.lock();
-            match c {
-                b'\n' => {
-                    uart.putchar(b'\r');
-                    uart.putchar(b'\n');
-                }
-                c => uart.putchar(c),
-            }
+            uart.putchar(c);
         } else {
             UART.buffer[UART.pointer] = c;
             UART.pointer += 1;
@@ -133,14 +127,12 @@ pub fn getchar() -> Option<u8> {
 /// probe virtio console directly
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
-    for reg in ruxconfig::VIRTIO_MMIO_REGIONS {
-        {
-            if let Some(dev) = probe_mmio(reg.0, reg.1) {
-                unsafe {
-                    UART.inner = Some(SpinNoIrq::new(dev));
-                    UART.addr = reg.0;
-                }
-            }
+    let uart_base: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
+    let uart_reg: usize = 0x200;
+    if let Some(dev) = probe_mmio(uart_base, uart_reg) {
+        unsafe {
+            UART.inner = Some(SpinNoIrq::new(dev));
+            UART.addr = uart_base;
         }
     }
     info!("Output now redirected to VirtIO Console!");
@@ -150,10 +142,11 @@ pub fn directional_probing() {
 pub fn enable_interrupt() {
     #[cfg(all(feature = "irq", target_arch = "aarch64"))]
     {
+        let virtio_console_irq_num = ruxconfig::VIRTIO_CONSOLE_IRQ + 32;
         info!("Initiating VirtIO Console interrupt ...");
-        info!("IRQ ID: {}", crate::platform::irq::UART_IRQ_NUM);
-        crate::irq::register_handler(crate::platform::irq::UART_IRQ_NUM, irq_handler);
-        crate::irq::set_enable(crate::platform::irq::UART_IRQ_NUM, true);
+        info!("IRQ ID: {}", virtio_console_irq_num);
+        crate::irq::register_handler(virtio_console_irq_num, irq_handler);
+        crate::irq::set_enable(virtio_console_irq_num, true);
         ack_interrupt();
         info!("Interrupt enabled!");
     }

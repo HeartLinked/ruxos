@@ -82,7 +82,11 @@ pci-ranges = [
 ]
 # UART Address
 uart-paddr = "0x9000000"
-uart-irq = "47"
+uart-irq = "1"
+
+# Virtio console
+virtio-console-paddr = "0xa003e00"
+virtio-console-irq = "47"
 
 # GICC Address
 gicc-paddr = "0x0801_0000"
