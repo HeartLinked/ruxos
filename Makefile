@@ -37,7 +37,7 @@
 #     - `MUSL`: Link C app with musl libc
 
 # General options
-ARCH ?= aarch64
+ARCH ?= x86_64
 PLATFORM ?=
 SMP ?= 1
 MODE ?= release
