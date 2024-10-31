@@ -13,8 +13,12 @@ use crate::virtio::virtio_hal::VirtIoHalImpl;
 use driver_console::ConsoleDriverOps;
 use driver_virtio::VirtIoConsoleDev;
 use spinlock::SpinNoIrq;
+const VIRTIO_CONSOLE_BASE: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
+const VIRTIO_CONSOLE_REG: usize = 0x200;
 
-use crate::platform::irq::{VIRTIO_CONSOLE_BASE, VIRTIO_CONSOLE_IRQ_NUM, VIRTIO_CONSOLE_REG};
+#[cfg(all(feature = "irq", target_arch = "aarch64"))]
+use crate::platform::irq::VIRTIO_CONSOLE_IRQ_NUM;
+
 /// Store buffer size
 const MEM_SIZE: usize = 4096;
 

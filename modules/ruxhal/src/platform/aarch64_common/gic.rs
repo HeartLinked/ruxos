@@ -23,13 +23,7 @@ pub const TIMER_IRQ_NUM: usize = translate_irq(14, InterruptType::PPI).unwrap();
 /// The UART IRQ number.
 pub const UART_IRQ_NUM: usize = translate_irq(ruxconfig::UART_IRQ, InterruptType::SPI).unwrap();
 
-#[cfg(feature = "virtio_console")]
-/// The Virtio-console base address
-pub const VIRTIO_CONSOLE_BASE: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
-#[cfg(feature = "virtio_console")]
-/// The Virtio-console register address
-pub const VIRTIO_CONSOLE_REG: usize = 0x200;
-#[cfg(feature = "virtio_console")]
+#[cfg(all(feature = "irq", feature = "virtio_console"))]
 /// The Virtio-console IRQ number
 pub const VIRTIO_CONSOLE_IRQ_NUM: usize =
     translate_irq(ruxconfig::VIRTIO_CONSOLE_IRQ, InterruptType::SPI).unwrap();
