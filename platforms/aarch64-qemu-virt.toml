@@ -85,9 +85,9 @@ uart-paddr = "0x9000000"
 uart-irq = "1"
 
 # Virtio console
-virtio-console-paddr = "0xFFFFFFFF"
-# Virtio console irq
-virtio-console-irq = "0"
+virtio-console-paddr = "0xa003e00"
+# Virtio console IRQ
+virtio-console-irq = "47"
 
 # GICC Address
 gicc-paddr = "0x0801_0000"
