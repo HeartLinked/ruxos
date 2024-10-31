@@ -14,6 +14,13 @@ use driver_console::ConsoleDriverOps;
 use driver_virtio::VirtIoConsoleDev;
 use spinlock::SpinNoIrq;
 
+/// The UART base address
+const UART_BASE: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
+/// The UART register address
+const UART_REG: usize = 0x200;
+/// The UART IRQ number
+const VIRTIO_CONSOLE_IRQ_NUM: usize = ruxconfig::VIRTIO_CONSOLE_IRQ + 32;
+
 #[cfg(feature = "irq")]
 const BUFFER_SIZE: usize = 128;
 
@@ -127,12 +134,10 @@ pub fn getchar() -> Option<u8> {
 /// probe virtio console directly
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
-    let uart_base: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
-    let uart_reg: usize = 0x200;
-    if let Some(dev) = probe_mmio(uart_base, uart_reg) {
+    if let Some(dev) = probe_mmio(UART_BASE, UART_REG) {
         unsafe {
             UART.inner = Some(SpinNoIrq::new(dev));
-            UART.addr = uart_base;
+            UART.addr = UART_BASE;
         }
     }
     info!("Output now redirected to VirtIO Console!");
@@ -142,11 +147,10 @@ pub fn directional_probing() {
 pub fn enable_interrupt() {
     #[cfg(all(feature = "irq", target_arch = "aarch64"))]
     {
-        let virtio_console_irq_num = ruxconfig::VIRTIO_CONSOLE_IRQ + 32;
         info!("Initiating VirtIO Console interrupt ...");
-        info!("IRQ ID: {}", virtio_console_irq_num);
-        crate::irq::register_handler(virtio_console_irq_num, irq_handler);
-        crate::irq::set_enable(virtio_console_irq_num, true);
+        info!("IRQ ID: {}", VIRTIO_CONSOLE_IRQ_NUM);
+        crate::irq::register_handler(VIRTIO_CONSOLE_IRQ_NUM, irq_handler);
+        crate::irq::set_enable(VIRTIO_CONSOLE_IRQ_NUM, true);
         ack_interrupt();
         info!("Interrupt enabled!");
     }
