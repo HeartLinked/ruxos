@@ -14,12 +14,9 @@ use driver_console::ConsoleDriverOps;
 use driver_virtio::VirtIoConsoleDev;
 use spinlock::SpinNoIrq;
 
-/// The UART base address
-const UART_BASE: usize = ruxconfig::VIRTIO_CONSOLE_PADDR;
-/// The UART register address
-const UART_REG: usize = 0x200;
-/// The UART IRQ number
-const VIRTIO_CONSOLE_IRQ_NUM: usize = ruxconfig::VIRTIO_CONSOLE_IRQ + 32;
+use crate::platform::irq::{VIRTIO_CONSOLE_BASE, VIRTIO_CONSOLE_IRQ_NUM, VIRTIO_CONSOLE_REG};
+/// Store buffer size
+const MEM_SIZE: usize = 4096;
 
 #[cfg(feature = "irq")]
 const BUFFER_SIZE: usize = 128;
@@ -72,7 +69,7 @@ impl RxRingBuffer {
 /// The UART driver
 struct UartDrv {
     inner: Option<SpinNoIrq<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>>>,
-    buffer: [u8; 20000],
+    buffer: [u8; MEM_SIZE],
     #[cfg(feature = "irq")]
     irq_buffer: SpinNoIrq<RxRingBuffer>,
     pointer: usize,
@@ -82,7 +79,7 @@ struct UartDrv {
 /// The UART driver instance
 static mut UART: UartDrv = UartDrv {
     inner: None,
-    buffer: [0; 20000],
+    buffer: [0; MEM_SIZE],
     #[cfg(feature = "irq")]
     irq_buffer: SpinNoIrq::new(RxRingBuffer::new()),
     pointer: 0,
@@ -134,10 +131,10 @@ pub fn getchar() -> Option<u8> {
 /// probe virtio console directly
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
-    if let Some(dev) = probe_mmio(UART_BASE, UART_REG) {
+    if let Some(dev) = probe_mmio(VIRTIO_CONSOLE_BASE, VIRTIO_CONSOLE_REG) {
         unsafe {
             UART.inner = Some(SpinNoIrq::new(dev));
-            UART.addr = UART_BASE;
+            UART.addr = VIRTIO_CONSOLE_BASE;
         }
     }
     info!("Output now redirected to VirtIO Console!");

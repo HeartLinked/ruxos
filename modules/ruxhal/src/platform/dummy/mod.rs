@@ -82,6 +82,15 @@ pub mod irq {
     /// The timer IRQ number.
     pub const TIMER_IRQ_NUM: usize = 0;
 
+    /// The Virtio-console base address
+    pub const VIRTIO_CONSOLE_BASE: usize = 0;
+
+    /// The Virtio-console register address
+    pub const VIRTIO_CONSOLE_REG: usize = 0x200;
+
+    /// The Virtio-console IRQ number
+    pub const VIRTIO_CONSOLE_IRQ_NUM: usize = 0;
+
     /// Enables or disables the given IRQ.
     pub fn set_enable(irq_num: usize, enabled: bool) {}
 
