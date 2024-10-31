@@ -33,6 +33,7 @@ uart-irq = "0x79"
 
 # Virtio console
 virtio-console-paddr = "0xFFFFFFFF"
+# Virtio console irq
 virtio-console-irq = "0"
 
 # GIC Address

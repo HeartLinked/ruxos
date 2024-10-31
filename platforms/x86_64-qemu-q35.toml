@@ -40,6 +40,7 @@ pci-ranges = []
 
 # Virtio console
 virtio-console-paddr = "0xFFFFFFFF"
+# Virtio console irq
 virtio-console-irq = "0"
 
 # Timer interrupt frequencyin Hz.
