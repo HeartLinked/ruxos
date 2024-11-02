@@ -72,81 +72,80 @@ impl RxRingBuffer {
 
 /// The UART driver
 struct UartDrv {
-    inner: Option<SpinNoIrq<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>>>,
+    inner: Option<VirtIoConsoleDev<VirtIoHalImpl, VirtIoTransport>>,
     buffer: [u8; MEM_SIZE],
     #[cfg(feature = "irq")]
-    irq_buffer: SpinNoIrq<RxRingBuffer>,
+    irq_buffer: RxRingBuffer,
     pointer: usize,
     addr: usize,
 }
 
 /// The UART driver instance
-static mut UART: UartDrv = UartDrv {
+static UART: SpinNoIrq<UartDrv> = SpinNoIrq::new(UartDrv {
     inner: None,
     buffer: [0; MEM_SIZE],
     #[cfg(feature = "irq")]
-    irq_buffer: SpinNoIrq::new(RxRingBuffer::new()),
+    irq_buffer: RxRingBuffer::new(),
     pointer: 0,
     addr: 0,
-};
+});
 
 /// Writes a byte to the console.
 pub fn putchar(c: u8) {
-    unsafe {
-        if let Some(ref mut uart_inner) = UART.inner {
-            if UART.pointer > 0 {
-                for i in 0..UART.pointer {
-                    let mut uart = uart_inner.lock();
-                    match UART.buffer[i] {
-                        b'\n' => {
-                            uart.putchar(b'\r');
-                            uart.putchar(b'\n');
-                        }
-                        c => uart.putchar(c),
+    let mut uart_drv = UART.lock();
+    if uart_drv.inner.is_some() {
+        if uart_drv.pointer > 0 {
+            for i in 0..uart_drv.pointer {
+                let c = uart_drv.buffer[i];
+                let uart = uart_drv.inner.as_mut().unwrap();
+                match c {
+                    b'\n' => {
+                        uart.putchar(b'\r');
+                        uart.putchar(b'\n');
                     }
+                    c => uart.putchar(c),
                 }
-                UART.pointer = 0;
-                warn!("######################### The above content is printed from buffer! #########################");
             }
-            let mut uart = uart_inner.lock();
-            uart.putchar(c);
-        } else {
-            UART.buffer[UART.pointer] = c;
-            UART.pointer += 1;
+            uart_drv.pointer = 0;
+            warn!("######################### The above content is printed from buffer! #########################");
         }
+        let uart = uart_drv.inner.as_mut().unwrap();
+        uart.putchar(c);
+    } else {
+        let ptr = uart_drv.pointer;
+        uart_drv.buffer[ptr] = c;
+        uart_drv.pointer += 1;
     }
 }
 
 /// Reads a byte from the console.
 pub fn getchar() -> Option<u8> {
-    unsafe {
-        #[cfg(feature = "irq")]
-        return UART.irq_buffer.lock().pop();
-        #[cfg(not(feature = "irq"))]
-        if let Some(ref mut uart_inner) = UART.inner {
-            let mut uart = uart_inner.lock();
-            return uart.getchar();
-        } else {
-            None
-        }
+    let mut uart_drv = UART.lock();
+    #[cfg(feature = "irq")]
+    return uart_drv.irq_buffer.pop();
+    #[cfg(not(feature = "irq"))]
+    if let Some(ref mut uart_inner) = uart_drv.inner {
+        return uart_inner.getchar();
+    } else {
+        None
     }
 }
 
 /// probe virtio console directly
 pub fn directional_probing() {
     info!("Initiating VirtIO Console ...");
+    let mut uart_drv = UART.lock();
     if let Some(dev) = probe_mmio(VIRTIO_CONSOLE_BASE, VIRTIO_CONSOLE_REG) {
-        unsafe {
-            UART.inner = Some(SpinNoIrq::new(dev));
-            UART.addr = VIRTIO_CONSOLE_BASE;
-        }
+        uart_drv.inner = Some(dev);
+        uart_drv.addr = VIRTIO_CONSOLE_BASE;
     }
     info!("Output now redirected to VirtIO Console!");
 }
 
 /// enable virtio console interrupt
+#[cfg(feature = "irq")]
 pub fn enable_interrupt() {
-    #[cfg(all(feature = "irq", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     {
         info!("Initiating VirtIO Console interrupt ...");
         info!("IRQ ID: {}", VIRTIO_CONSOLE_IRQ_NUM);
@@ -154,39 +153,42 @@ pub fn enable_interrupt() {
         crate::irq::set_enable(VIRTIO_CONSOLE_IRQ_NUM, true);
         ack_interrupt();
         info!("Interrupt enabled!");
+        return;
     }
+    #[cfg(not(target_arch = "aarch64"))]
+    warn!("Interrupt is not supported on this platform!");
 }
 
 /// virtio console interrupt handler
+#[cfg(feature = "irq")]
 pub fn irq_handler() {
-    #[cfg(feature = "irq")]
-    unsafe {
-        if let Some(ref mut uart_inner) = UART.inner {
-            let mut uart = uart_inner.lock();
-            if uart.ack_interrupt().unwrap() {
-                while let Some(c) = uart.getchar() {
-                    UART.irq_buffer.lock().push(c);
-                }
+    let mut uart_drv = UART.lock();
+    if let Some(ref mut uart_inner) = uart_drv.inner {
+        let uart = uart_inner;
+        if uart.ack_interrupt().unwrap() {
+            if let Some(c) = uart.getchar() {
+                uart_drv.irq_buffer.push(c);
             }
         }
     }
 }
 
 /// Acknowledge the interrupt
+#[cfg(feature = "irq")]
 pub fn ack_interrupt() {
-    #[cfg(feature = "irq")]
-    unsafe {
-        if let Some(ref mut uart_inner) = UART.inner {
-            let mut uart = uart_inner.lock();
-            uart.ack_interrupt()
-                .expect("Virtio_console ack interrupt error");
-        }
+    info!("ack interrupt");
+    let mut uart_drv = UART.lock();
+    if let Some(ref mut uart_inner) = uart_drv.inner {
+        let uart = uart_inner;
+        uart.ack_interrupt()
+            .expect("Virtio_console ack interrupt error");
     }
 }
 
 /// Check if the address is the probe address
 pub fn is_probe(addr: usize) -> bool {
-    unsafe { addr == UART.addr }
+    let uart_drv = UART.lock();
+    addr == uart_drv.addr
 }
 
 /// Probe the virtio console
