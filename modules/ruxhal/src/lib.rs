@@ -77,6 +77,11 @@ pub mod misc {
     pub use super::platform::misc::*;
 }
 
+/// Inter-VM communication.
+pub mod ivc {
+    pub use super::platform::ivc::*;
+}
+
 /// Multi-core operations.
 #[cfg(feature = "smp")]
 pub mod mp {

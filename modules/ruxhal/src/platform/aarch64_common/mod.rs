@@ -21,3 +21,5 @@ pub mod pl011;
 
 #[cfg(feature = "rtc")]
 pub mod pl031;
+
+pub mod ivc;

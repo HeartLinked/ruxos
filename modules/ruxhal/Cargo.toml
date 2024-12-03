@@ -14,7 +14,7 @@ repository = "https://github.com/syswonder/ruxos/tree/main/modules/ruxhal"
 [features]
 virtio_hal = ["driver_virtio","virtio-drivers","axalloc"]
 smp = []
-alloc = []
+alloc = ["axalloc"]
 fp_simd = []
 paging = ["axalloc", "page_table"]
 irq = []

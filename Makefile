@@ -36,6 +36,9 @@
 # * Libc options:
 #     - `MUSL`: Link C app with musl libc
 
+# virtio_console
+# FEATURES ?= virtio_console irq
+
 # General options
 ARCH ?= x86_64
 PLATFORM ?=

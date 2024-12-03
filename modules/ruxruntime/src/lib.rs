@@ -283,6 +283,8 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         core::hint::spin_loop();
     }
 
+    ruxhal::ivc::ivc_example();
+    
     // environ variables and Command line parameters initialization
     #[cfg(feature = "alloc")]
     unsafe {
