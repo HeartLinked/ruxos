@@ -51,6 +51,9 @@ pub mod time;
 pub mod trap;
 pub mod virtio;
 
+#[cfg(feature = "ivc")]
+pub mod ivc;
+
 #[cfg(feature = "tls")]
 pub mod tls;
 
