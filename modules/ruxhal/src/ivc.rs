@@ -13,6 +13,7 @@ use axalloc::global_allocator;
 use memory_addr::{PhysAddr, VirtAddr};
 use ruxconfig::IVC_ZONES;
 use crate::mem::{direct_virt_to_phys, phys_to_virt};
+#[cfg(all(target_arch = "aarch64", feature = "ivc"))] 
 use crate::platform::ivc::ivc_hvc_call;
 
 pub const CONFIG_MAX_IVC_CONFIGS: usize = 0x2;
