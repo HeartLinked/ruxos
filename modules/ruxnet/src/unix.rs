@@ -16,6 +16,9 @@ use core::net::SocketAddr;
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::RwLock;
 
+use alloc::collections::VecDeque;
+use alloc::vec::Vec;
+
 use lazy_init::LazyInit;
 
 use smoltcp::socket::tcp::SocketBuffer;
@@ -47,15 +50,23 @@ impl SocketAddrUnix {
 
 //To avoid owner question of FDTABLE outside and UnixTable in this crate we split the unixsocket
 struct UnixSocketInner<'a> {
+    pub socket_type: UnixSocketType,
+
     pub addr: Mutex<SocketAddrUnix>,
     pub buf: SocketBuffer<'a>,
     pub peer_socket: Option<usize>,
     pub status: UnixSocketStatus,
+
+    /// DGRAM socket, use a queue to store (source address, datagram).
+    pub dgram_queue: VecDeque<(SocketAddrUnix, Vec<u8>)>,
+    /// If a DGRAM socket calls connect(), record the default remote address; otherwise, set it to None.
+    pub dgram_connected_addr: Option<SocketAddrUnix>,
 }
 
 impl<'a> UnixSocketInner<'a> {
-    pub fn new() -> Self {
+    pub fn new(socket_type: UnixSocketType) -> Self {
         Self {
+            socket_type,
             addr: Mutex::new(SocketAddrUnix {
                 sun_family: 1, //AF_UNIX
                 sun_path: [0; SOCK_ADDR_UN_PATH_LEN],
@@ -63,6 +74,8 @@ impl<'a> UnixSocketInner<'a> {
             buf: SocketBuffer::new(vec![0; 64 * 1024]),
             peer_socket: None,
             status: UnixSocketStatus::Closed,
+            dgram_queue: VecDeque::new(),
+            dgram_connected_addr: None,
         }
     }
 
@@ -241,8 +254,8 @@ impl UnixSocket {
     /// only support sock_stream
     pub fn new(_type: UnixSocketType) -> Self {
         match _type {
-            UnixSocketType::SockDgram | UnixSocketType::SockSeqpacket => unimplemented!(),
-            UnixSocketType::SockStream => {
+            UnixSocketType::SockSeqpacket => unimplemented!(),
+            UnixSocketType::SockDgram | UnixSocketType::SockStream => {
                 let mut unixsocket = UnixSocket {
                     sockethandle: None,
                     unixsocket_type: _type,
@@ -250,7 +263,7 @@ impl UnixSocket {
                 };
                 let handle = UNIX_TABLE
                     .write()
-                    .add(Arc::new(Mutex::new(UnixSocketInner::new())))
+                    .add(Arc::new(Mutex::new(UnixSocketInner::new(_type))))
                     .unwrap();
                 unixsocket.set_sockethandle(handle);
                 unixsocket
@@ -330,49 +343,61 @@ impl UnixSocket {
         }
     }
 
-    /// Binds the socket to a specified address, get inode number of the address as handle
-    // TODO: bind to file system
     pub fn bind(&mut self, addr: SocketAddrUnix) -> LinuxResult {
-        let now_state = self.get_state();
-        match now_state {
-            UnixSocketStatus::Closed => {
-                {
-                    match get_inode(addr) {
-                        Ok(inode_addr) => {
-                            UNIX_TABLE
-                                .write()
-                                .replace_handle(self.get_sockethandle(), inode_addr);
-                            self.set_sockethandle(inode_addr);
-                        }
-                        Err(AxError::NotFound) => match create_socket_file(addr) {
-                            Ok(inode_addr) => {
-                                UNIX_TABLE
-                                    .write()
-                                    .replace_handle(self.get_sockethandle(), inode_addr);
-                                self.set_sockethandle(inode_addr);
-                            }
-                            _ => {
-                                warn!("unix socket can not get real inode");
-                            }
-                        },
-                        _ => {
-                            warn!("unix socket can not get real inode");
-                        }
-                    }
+        match self.unixsocket_type {
+            UnixSocketType::SockStream => {
+                let now_state = self.get_state();
+                if now_state != UnixSocketStatus::Closed {
+                    return Err(LinuxError::EINVAL);
                 }
+                let _ = self.get_or_create_inode(&addr);
                 let mut binding = UNIX_TABLE.write();
                 let mut socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
                 socket_inner.addr.lock().set_addr(&addr);
                 socket_inner.set_state(UnixSocketStatus::Busy);
                 Ok(())
             }
-            _ => Err(LinuxError::EINVAL),
+            UnixSocketType::SockDgram => {
+                let _ = self.get_or_create_inode(&addr);
+                // 设置地址
+                let mut binding = UNIX_TABLE.write();
+                let mut socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
+                socket_inner.addr.lock().set_addr(&addr);
+                Ok(())
+            },
+            _ => Err(LinuxError::EINVAL), // SockSeqpacket is not supported
+        }
+    }
+
+    fn get_or_create_inode(&mut self, addr: &SocketAddrUnix) -> Result<usize, LinuxError> {
+        match get_inode(*addr) {
+            Ok(inode_addr) => {
+                UNIX_TABLE.write().replace_handle(self.get_sockethandle(), inode_addr);
+                self.set_sockethandle(inode_addr);
+                Ok(inode_addr)
+            }
+            Err(AxError::NotFound) => match create_socket_file(*addr) {
+                Ok(inode_addr) => {
+                    UNIX_TABLE.write().replace_handle(self.get_sockethandle(), inode_addr);
+                    self.set_sockethandle(inode_addr);
+                    Ok(inode_addr)
+                }
+                _ => {
+                    warn!("unix socket cannot get real inode1");
+                    Err(LinuxError::EFAULT) 
+                }
+            },
+            _ => {
+                warn!("unix socket cannot get real inode2");
+                Err(LinuxError::EFAULT) 
+            }
         }
     }
 
     /// Sends data through the socket to the connected peer, push data into buffer of peer socket
     /// this will block if not connected by default
     pub fn send(&self, buf: &[u8]) -> LinuxResult<usize> {
+        warn!("unix socket send");
         match self.unixsocket_type {
             UnixSocketType::SockDgram | UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
             UnixSocketType::SockStream => loop {
