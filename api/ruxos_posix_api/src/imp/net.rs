@@ -172,6 +172,8 @@ impl Socket {
                 }
                 if addrlen != size_of::<ctypes::sockaddr_un>() as _ {
                     warn!("sendto addrlen not match");
+                    warn!("addrlen: {}", addrlen);
+                    warn!("size_of::<ctypes::sockaddr_un>(): {}", size_of::<ctypes::sockaddr_un>());
                     return Err(LinuxError::EINVAL);
                 }
                 Ok(unixsocket.lock().sendto(
@@ -541,6 +543,7 @@ pub unsafe fn sys_recvfrom(
         let socket = Socket::from_fd(socket_fd)?;
         let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, len) };
 
+        warn!("addrlen before: {}", *addrlen);
         let res = socket.recvfrom(buf)?;
         if let Some(addr) = res.1 {
             match addr {
@@ -552,6 +555,7 @@ pub unsafe fn sys_recvfrom(
                 },
             }
         }
+        warn!("addrlen after: {}", *addrlen);
         Ok(res.0)
     })
 }

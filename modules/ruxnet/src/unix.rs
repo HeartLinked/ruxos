@@ -7,13 +7,13 @@
 *   See the Mulan PSL v2 for more details.
 */
 
-use alloc::{sync::Arc, vec};
+use alloc::{sync::Arc, vec, format};
 use axerrno::{ax_err, AxError, AxResult, LinuxError, LinuxResult};
 use axio::PollState;
 use axsync::Mutex;
 use core::ffi::{c_char, c_int};
 use core::net::SocketAddr;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering, AtomicUsize};
 use spin::RwLock;
 
 use alloc::collections::VecDeque;
@@ -30,6 +30,7 @@ use ruxtask::yield_now;
 
 const SOCK_ADDR_UN_PATH_LEN: usize = 108;
 const UNIX_SOCKET_BUFFER_SIZE: usize = 4096;
+static ANONYMOUS_ADDR_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// rust form for ctype sockaddr_un
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -177,6 +178,26 @@ fn create_socket_file(addr: SocketAddrUnix) -> AxResult<usize> {
     };
     let _vfsnode = create_file(None, socket_path)?;
     Err(AxError::Unsupported)
+}
+
+fn generate_anonymous_address() -> SocketAddrUnix {
+    let unique_id = ANONYMOUS_ADDR_COUNTER.fetch_add(1, Ordering::SeqCst); // 使用递增计数器
+
+    let addr_str = format!("\0anonymous_{}", unique_id);
+
+    // 将字符串转换为字节数组
+    let mut sun_path = [0 as c_char; SOCK_ADDR_UN_PATH_LEN];
+    for (i, byte) in addr_str.as_bytes().iter().enumerate() {
+        if i >= SOCK_ADDR_UN_PATH_LEN {
+            break;
+        }
+        sun_path[i] = *byte as c_char;
+    }
+
+    SocketAddrUnix {
+        sun_family: 1, //AF_UNIX
+        sun_path,
+    }
 }
 
 struct HashMapWarpper<'a> {
@@ -553,8 +574,9 @@ impl UnixSocket {
     }
 
     /// Returns the local address of the socket.
-    pub fn local_addr(&self) -> LinuxResult<SocketAddr> {
+    pub fn local_addr(&self) -> LinuxResult<SocketAddrUnix> {
         unimplemented!()
+        // TODO: get local address
     }
 
     /// Returns the file descriptor for the socket.
@@ -662,7 +684,6 @@ impl UnixSocket {
     /// Sends data to a specified address.
     pub fn sendto(&self, buf: &[u8], addr: SocketAddrUnix) -> LinuxResult<usize> {
 
-        print_unix_table();
         info!("unix socket recvfrom");
         match self.unixsocket_type {
             // TODO: sockstream: sendto
@@ -670,6 +691,22 @@ impl UnixSocket {
             UnixSocketType::SockDgram => {
 
                 warn!("unix socket sendto");
+
+                // 获取源地址
+                let mut source_addr = {
+                    let table = UNIX_TABLE.read();
+                    let addr = table.get(self.get_sockethandle()).unwrap().lock().get_addr();
+                    addr
+                };
+                if source_addr.sun_path.iter().all(|&c| c == 0) {
+                    info!("source addr is null, set to an anonymous address");
+                    source_addr = generate_anonymous_address();
+                    let mut binding = UNIX_TABLE.write();
+                    let mut socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
+                    socket_inner.addr.lock().set_addr(&source_addr);
+                }
+                print_unix_table();
+
 
                 // 查找目标套接字句柄
                 let target_handle = {
@@ -680,12 +717,6 @@ impl UnixSocket {
                     }
                 };
                 warn!("unix socket sendto: {:?}", target_handle);
-                // 获取源地址
-                let source_addr = {
-                    let table = UNIX_TABLE.read();
-                    let addr = table.get(self.get_sockethandle()).unwrap().lock().get_addr();
-                    addr
-                };
 
                 // 获取目标套接字的内部结构
                 let target_socket = UNIX_TABLE.read().get(target_handle)
