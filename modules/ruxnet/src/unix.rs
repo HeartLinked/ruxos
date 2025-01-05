@@ -32,7 +32,7 @@ const SOCK_ADDR_UN_PATH_LEN: usize = 108;
 const UNIX_SOCKET_BUFFER_SIZE: usize = 4096;
 
 /// rust form for ctype sockaddr_un
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SocketAddrUnix {
     /// AF_UNIX
     pub sun_family: u16,
@@ -97,6 +97,10 @@ impl<'a> UnixSocketInner<'a> {
 
     pub fn set_state(&mut self, state: UnixSocketStatus) {
         self.status = state
+    }
+
+    pub fn get_dgram_connected_addr(&self) -> Option<SocketAddrUnix> {
+        self.dgram_connected_addr
     }
 
     pub fn can_accept(&mut self) -> bool {
@@ -224,7 +228,7 @@ impl<'a> HashMapWarpper<'a> {
 static UNIX_TABLE: LazyInit<RwLock<HashMapWarpper>> = LazyInit::new();
 
 /// unix socket type
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnixSocketType {
     /// A stream-oriented Unix domain socket.
     SockStream,
@@ -359,7 +363,6 @@ impl UnixSocket {
             }
             UnixSocketType::SockDgram => {
                 let _ = self.get_or_create_inode(&addr);
-                // 设置地址
                 let mut binding = UNIX_TABLE.write();
                 let mut socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
                 socket_inner.addr.lock().set_addr(&addr);
@@ -437,6 +440,7 @@ impl UnixSocket {
     /// Receives data from the socket, check if there any data in buffer
     /// this will block if not connected or buffer is empty by default
     pub fn recv(&self, buf: &mut [u8], _flags: i32) -> LinuxResult<usize> {
+        warn!("unix socket recv");
         match self.unixsocket_type {
             UnixSocketType::SockDgram | UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
             UnixSocketType::SockStream => loop {
@@ -564,22 +568,38 @@ impl UnixSocket {
     /// Returns the peer address of the socket.
     pub fn peer_addr(&self) -> AxResult<SocketAddrUnix> {
         let now_state = self.get_state();
-        match now_state {
-            UnixSocketStatus::Connected | UnixSocketStatus::Listening => {
-                let peer_sockethandle = self.get_peerhandle().unwrap();
-                Ok(UNIX_TABLE
-                    .read()
-                    .get(peer_sockethandle)
-                    .unwrap()
-                    .lock()
-                    .get_addr())
+        match self.get_sockettype() {
+            UnixSocketType::SockStream => {
+                match now_state {
+                    UnixSocketStatus::Connected | UnixSocketStatus::Listening => {
+                        let peer_sockethandle = self.get_peerhandle().unwrap();
+                        Ok(UNIX_TABLE
+                            .read()
+                            .get(peer_sockethandle)
+                            .unwrap()
+                            .lock()
+                            .get_addr())
+                    }
+                    _ => Err(AxError::NotConnected),
+                }
             }
-            _ => Err(AxError::NotConnected),
+            UnixSocketType::SockDgram => {
+                // return dgram_connected_addr（if exist）
+                let mut inner = UNIX_TABLE.read();
+                let mut socket_inner = inner.get(self.get_sockethandle()).unwrap().lock();
+                if let Some(addr) = socket_inner.get_dgram_connected_addr() {
+                    Ok(addr.clone())
+                } else {
+                    Err(AxError::NotConnected)
+                }
+            }
+            UnixSocketType::SockSeqpacket => unimplemented!(),
         }
     }
 
     /// Connects the socket to a specified address, push info into remote socket
     pub fn connect(&mut self, addr: SocketAddrUnix) -> LinuxResult {
+        // TODO: DGRAM
         let now_state = self.get_state();
         if now_state != UnixSocketStatus::Connecting && now_state != UnixSocketStatus::Connected {
             //a new block is needed to free rwlock
@@ -637,12 +657,108 @@ impl UnixSocket {
 
     /// Sends data to a specified address.
     pub fn sendto(&self, buf: &[u8], addr: SocketAddrUnix) -> LinuxResult<usize> {
-        unimplemented!()
+
+        print_unix_table();
+
+        info!("unix socket recvfrom");
+        match self.unixsocket_type {
+            // TODO: sockstream: sendto
+            UnixSocketType::SockStream => unimplemented!(),
+            UnixSocketType::SockDgram => {
+
+                warn!("unix socket sendto");
+
+                // 查找目标套接字句柄
+                let target_handle = {
+                    let table = UNIX_TABLE.read();
+                    match table.find(|socket_inner| socket_inner.lock().get_addr() == addr) {
+                        Some((handle, _)) => *handle,
+                        None => return Err(LinuxError::ENOENT), // 目标地址不存在
+                    }
+                };
+                warn!("unix socket sendto: {:?}", target_handle);
+                // 获取源地址
+                let source_addr = {
+                    let table = UNIX_TABLE.read();
+                    let addr = table.get(self.get_sockethandle()).unwrap().lock().get_addr();
+                    addr
+                };
+
+                // 获取目标套接字的内部结构
+                let target_socket = UNIX_TABLE.read().get(target_handle)
+                    .ok_or(LinuxError::ENOENT)?
+                    .clone();
+
+                let mut target_inner = target_socket.lock();
+
+                // 检查目标套接字是否为 DGRAM 类型
+                if target_inner.socket_type != UnixSocketType::SockDgram {
+                    return Err(LinuxError::EINVAL); // 目标套接字类型不匹配
+                }
+
+                // 检查目标套接字是否已绑定
+                let target_addr = target_inner.get_addr();
+                if target_addr.sun_path.iter().all(|&c| c == 0) {
+                    return Err(LinuxError::EINVAL); // 目标套接字未绑定地址
+                }
+
+                // 检查目标套接字的队列是否已满
+                if target_inner.dgram_queue.len() >= target_inner.buf.capacity() {
+                    return Err(LinuxError::EAGAIN); // 队列已满
+                }
+
+                // 入队数据报
+                target_inner.dgram_queue.push_back((source_addr, buf.to_vec()));
+
+                Ok(buf.len())
+            },
+            UnixSocketType::SockSeqpacket => unimplemented!(),
+        }
     }
 
     /// Receives data from the socket and returns the sender's address.
-    pub fn recvfrom(&self, buf: &mut [u8]) -> LinuxResult<(usize, Option<SocketAddr>)> {
-        unimplemented!()
+    pub fn recvfrom(&self, buf: &mut [u8]) -> LinuxResult<(usize, Option<SocketAddrUnix>)> {
+        info!("unix socket recvfrom");
+        match self.unixsocket_type {
+            // TODO: sockstream: recvfrom
+            UnixSocketType::SockStream => unimplemented!(),
+            UnixSocketType::SockDgram => {
+                loop {
+                    // 获取当前套接字的内部结构
+                    let socket_inner = {
+                        let table = UNIX_TABLE.read();
+                        table.get(self.get_sockethandle()).ok_or(LinuxError::EBADF)?.clone()
+                    };
+                    let mut inner = socket_inner.lock();
+    
+                    // 检查数据报队列是否有数据
+                    if let Some((source_addr, data)) = inner.dgram_queue.pop_front() {
+                        // 确定要复制的字节数
+                        let len = buf.len().min(data.len());
+    
+                        // 复制数据到用户缓冲区
+                        buf[..len].copy_from_slice(&data[..len]);
+    
+                        // 如果数据报大于缓冲区，余下的数据将被截断
+                        // 你可以根据需要处理截断情况，比如记录日志或返回额外的状态
+    
+                        // 返回复制的字节数和发送方地址
+                        return Ok((len, Some(source_addr)));
+                    } else {
+                        // 数据报队列为空
+                        if self.is_nonblocking() {
+                            return Err(LinuxError::EAGAIN);
+                        } else {
+                            // 阻塞模式下挂起当前任务，等待数据到达
+                            // 需要确保在数据到达时能够重新唤醒该任务
+                            drop(inner); // 释放锁以避免死锁
+                            yield_now();
+                        }
+                    }
+                }
+            }
+            UnixSocketType::SockSeqpacket => unimplemented!(),
+        }
     }
 
     /// Listens for incoming connections on the socket.
@@ -754,4 +870,26 @@ impl Drop for UnixSocket {
 /// Initializes the global UNIX socket table, `UNIX_TABLE`, for managing Unix domain sockets.
 pub(crate) fn init_unix() {
     UNIX_TABLE.init_by(RwLock::new(HashMapWarpper::new()));
+}
+
+/// 打印 UNIX_TABLE 中的所有内容
+pub fn print_unix_table() {
+    // 获取 UNIX_TABLE 的读锁
+    let table = UNIX_TABLE.read();
+
+    // 遍历 HashMap
+    for (handle, socket_inner) in table.inner.iter() {
+        // 获取 UnixSocketInner 的锁
+        let inner = socket_inner.lock();
+
+        // 打印句柄和套接字信息
+        info!("Handle: {}", handle);
+        info!("Socket Type: {:?}", inner.socket_type);
+        info!("Address: {:?}", inner.addr);
+        info!("Peer Socket: {:?}", inner.peer_socket);
+        info!("Status: {:?}", inner.status);
+        info!("DGRAM Queue Length: {}", inner.dgram_queue.len());
+        info!("DGRAM Connected Address: {:?}", inner.dgram_connected_addr);
+        info!("----------------------------------------");
+    }
 }

@@ -111,14 +111,14 @@ impl Socket {
                 let addr = from_sockaddr(socket_addr, addrlen)?;
                 Ok(tcpsocket.lock().bind(addr)?)
             }
-            Socket::Unix(socket) => {
+            Socket::Unix(unixsocket) => {
                 if socket_addr.is_null() {
                     return Err(LinuxError::EFAULT);
                 }
                 if addrlen != size_of::<ctypes::sockaddr_un>() as _ {
                     return Err(LinuxError::EINVAL);
                 }
-                Ok(socket
+                Ok(unixsocket
                     .lock()
                     .bind(addrun_convert(socket_addr as *const ctypes::sockaddr_un))?)
             }
@@ -153,12 +153,31 @@ impl Socket {
         }
     }
 
-    fn sendto(&self, buf: &[u8], addr: SocketAddr) -> LinuxResult<usize> {
+    fn sendto(
+        &self,
+        buf: &[u8], 
+        socket_addr: *const ctypes::sockaddr, 
+        addrlen: ctypes::socklen_t,
+    ) -> LinuxResult<usize> {
         match self {
             // diff: must bind before sendto
-            Socket::Udp(udpsocket) => Ok(udpsocket.lock().send_to(buf, addr)?),
+            Socket::Udp(udpsocket) => {
+                let addr = from_sockaddr(socket_addr, addrlen)?;
+                Ok(udpsocket.lock().send_to(buf, addr)?)
+            },
             Socket::Tcp(_) => Err(LinuxError::EISCONN),
-            Socket::Unix(_) => Err(LinuxError::EISCONN),
+            Socket::Unix(unixsocket) => {
+                if socket_addr.is_null() {
+                    return Err(LinuxError::EFAULT);
+                }
+                if addrlen != size_of::<ctypes::sockaddr_un>() as _ {
+                    return Err(LinuxError::EINVAL);
+                }
+                Ok(unixsocket.lock().sendto(
+                    buf,
+                    addrun_convert(socket_addr as *const ctypes::sockaddr_un),
+                )?)
+            },
         }
     }
 
@@ -170,7 +189,22 @@ impl Socket {
                 .recv_from(buf)
                 .map(|res| (res.0, Some(res.1)))?),
             Socket::Tcp(tcpsocket) => Ok(tcpsocket.lock().recv(buf, 0).map(|res| (res, None))?),
-            Socket::Unix(socket) => Ok(socket.lock().recv(buf, 0).map(|res| (res, None))?),
+            Socket::Unix(unixsocket) => {
+                let mut guard = unixsocket.lock(); 
+                match guard.get_sockettype() {
+                    // diff: must bind before recvfrom
+                    UnixSocketType::SockDgram => {
+                        warn!("impl socket recvfrom for UnixSocketType::SockDgram");
+                        Err(LinuxError::EOPNOTSUPP)
+                        // guard.recvfrom(buf).map(|res| (res.0, res.1)).map_err(|e| e.into())
+                    }
+                    UnixSocketType::SockStream => {
+                        guard.recv(buf, 0).map(|res| (res, None)).map_err(|e| e.into())
+                    }
+                    _ => Err(LinuxError::EOPNOTSUPP),
+                }
+            }
+            // Ok(unixsocket.lock().recv(buf, 0).map(|res| (res, None))?),
         }
     }
 
@@ -433,7 +467,7 @@ pub fn sys_sendto(
     socket_addr: *const ctypes::sockaddr,
     addrlen: ctypes::socklen_t,
 ) -> ctypes::ssize_t {
-    debug!(
+    info!(
         "sys_sendto <= {} {:#x} {} {} {:#x} {}",
         socket_fd, buf_ptr as usize, len, flag, socket_addr as usize, addrlen
     );
@@ -441,14 +475,12 @@ pub fn sys_sendto(
         info!("sendto without address, use send instead");
         return sys_send(socket_fd, buf_ptr, len, flag);
     }
-
     syscall_body!(sys_sendto, {
         if buf_ptr.is_null() {
             return Err(LinuxError::EFAULT);
         }
-        let addr = from_sockaddr(socket_addr, addrlen)?;
         let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, len) };
-        Socket::from_fd(socket_fd)?.sendto(buf, addr)
+        Socket::from_fd(socket_fd)?.sendto(buf, socket_addr, addrlen)
     })
 }
 
@@ -485,16 +517,18 @@ pub unsafe fn sys_recvfrom(
     socket_addr: *mut ctypes::sockaddr,
     addrlen: *mut ctypes::socklen_t,
 ) -> ctypes::ssize_t {
-    debug!(
+    info!(
         "sys_recvfrom <= {} {:#x} {} {} {:#x} {:#x}",
         socket_fd, buf_ptr as usize, len, flag, socket_addr as usize, addrlen as usize
     );
     if socket_addr.is_null() {
+        info!("recvfrom without address, use recv instead");
         return sys_recv(socket_fd, buf_ptr, len, flag);
     }
 
     syscall_body!(sys_recvfrom, {
         if buf_ptr.is_null() || addrlen.is_null() {
+            warn!("recvfrom with null buffer or addrlen");
             return Err(LinuxError::EFAULT);
         }
         let socket = Socket::from_fd(socket_fd)?;
