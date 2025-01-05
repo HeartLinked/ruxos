@@ -171,6 +171,7 @@ impl Socket {
                     return Err(LinuxError::EFAULT);
                 }
                 if addrlen != size_of::<ctypes::sockaddr_un>() as _ {
+                    warn!("sendto addrlen not match");
                     return Err(LinuxError::EINVAL);
                 }
                 Ok(unixsocket.lock().sendto(
@@ -181,25 +182,31 @@ impl Socket {
         }
     }
 
-    fn recvfrom(&self, buf: &mut [u8]) -> LinuxResult<(usize, Option<SocketAddr>)> {
+    fn recvfrom(&self, buf: &mut [u8]) -> LinuxResult<(usize, Option<UnifiedSocketAddress>)> {
         match self {
             // diff: must bind before recvfrom
-            Socket::Udp(udpsocket) => Ok(udpsocket
-                .lock()
-                .recv_from(buf)
-                .map(|res| (res.0, Some(res.1)))?),
-            Socket::Tcp(tcpsocket) => Ok(tcpsocket.lock().recv(buf, 0).map(|res| (res, None))?),
+            Socket::Udp(udpsocket) => {
+                let (size, addr) = udpsocket.lock().recv_from(buf)?;
+                Ok((size, Some(UnifiedSocketAddress::Net(addr))))
+            }
+            Socket::Tcp(tcpsocket) => {
+                let size = tcpsocket.lock().recv(buf, 0)?;
+                Ok((size, None))
+            }
             Socket::Unix(unixsocket) => {
                 let mut guard = unixsocket.lock(); 
                 match guard.get_sockettype() {
                     // diff: must bind before recvfrom
                     UnixSocketType::SockDgram => {
                         warn!("impl socket recvfrom for UnixSocketType::SockDgram");
-                        Err(LinuxError::EOPNOTSUPP)
-                        // guard.recvfrom(buf).map(|res| (res.0, res.1)).map_err(|e| e.into())
+                        // Err(LinuxError::EOPNOTSUPP)
+                        let (size, addr) = guard.recvfrom(buf)?;
+                        // 将 SocketAddrUnix 封装为 UnifiedSocketAddress::Unix
+                        Ok((size, addr.map(UnifiedSocketAddress::Unix)))
                     }
                     UnixSocketType::SockStream => {
-                        guard.recv(buf, 0).map(|res| (res, None)).map_err(|e| e.into())
+                        let size = guard.recv(buf, 0)?;
+                        Ok((size, None))
                     }
                     _ => Err(LinuxError::EOPNOTSUPP),
                 }
@@ -536,8 +543,13 @@ pub unsafe fn sys_recvfrom(
 
         let res = socket.recvfrom(buf)?;
         if let Some(addr) = res.1 {
-            unsafe {
-                (*socket_addr, *addrlen) = into_sockaddr(addr);
+            match addr {
+                UnifiedSocketAddress::Net(addr) => unsafe {
+                    (*socket_addr, *addrlen) = into_sockaddr(addr);
+                },
+                UnifiedSocketAddress::Unix(addr) => unsafe {
+                    (*socket_addr, *addrlen) = un_into_sockaddr(addr);
+                },
             }
         }
         Ok(res.0)

@@ -442,7 +442,11 @@ impl UnixSocket {
     pub fn recv(&self, buf: &mut [u8], _flags: i32) -> LinuxResult<usize> {
         warn!("unix socket recv");
         match self.unixsocket_type {
-            UnixSocketType::SockDgram | UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
+            UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
+            UnixSocketType::SockDgram => {
+                let (len, _) = self.recvfrom(buf)?;
+                Ok(len)
+            }
             UnixSocketType::SockStream => loop {
                 let now_state = self.get_state();
                 match now_state {
@@ -659,7 +663,6 @@ impl UnixSocket {
     pub fn sendto(&self, buf: &[u8], addr: SocketAddrUnix) -> LinuxResult<usize> {
 
         print_unix_table();
-
         info!("unix socket recvfrom");
         match self.unixsocket_type {
             // TODO: sockstream: sendto
