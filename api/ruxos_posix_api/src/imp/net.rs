@@ -8,19 +8,15 @@
  */
 
 use alloc::{sync::Arc, vec, vec::Vec};
-use core::ffi::{c_char, c_int, c_void, CStr};
+use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
-use core::sync::atomic::AtomicIsize;
-use alloc::string::String;
-use core::slice;
 
 use axerrno::{LinuxError, LinuxResult};
 use axio::PollState;
 use axsync::Mutex;
 use ruxfdtable::{FileLike, RuxStat};
 use ruxnet::{SocketAddrUnix, TcpSocket, UdpSocket, UnixSocket, UnixSocketType};
-use ruxtask::fs::RUX_FILE_LIMIT;
 
 use crate::ctypes;
 use crate::utils::char_ptr_to_str;
@@ -199,11 +195,10 @@ impl Socket {
                 Ok((size, None))
             }
             Socket::Unix(unixsocket) => {
-                let mut guard = unixsocket.lock(); 
+                let guard = unixsocket.lock(); 
                 match guard.get_sockettype() {
                     // diff: must bind before recvfrom
                     UnixSocketType::SockDgram => {
-                        warn!("impl socket recvfrom for UnixSocketType::SockDgram");
                         // Err(LinuxError::EOPNOTSUPP)
                         let (size, addr) = guard.recvfrom(buf)?;
                         // 将 SocketAddrUnix 封装为 UnifiedSocketAddress::Unix
