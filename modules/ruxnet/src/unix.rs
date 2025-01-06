@@ -33,6 +33,7 @@ const UNIX_SOCKET_BUFFER_SIZE: usize = 4096;
 static ANONYMOUS_ADDR_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// rust form for ctype sockaddr_un
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SocketAddrUnix {
     /// AF_UNIX
@@ -421,7 +422,6 @@ impl UnixSocket {
     /// Sends data through the socket to the connected peer, push data into buffer of peer socket
     /// this will block if not connected by default
     pub fn send(&self, buf: &[u8]) -> LinuxResult<usize> {
-        warn!("unix socket send");
         match self.unixsocket_type {
             UnixSocketType::SockDgram | UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
             UnixSocketType::SockStream => loop {
@@ -461,7 +461,6 @@ impl UnixSocket {
     /// Receives data from the socket, check if there any data in buffer
     /// this will block if not connected or buffer is empty by default
     pub fn recv(&self, buf: &mut [u8], _flags: i32) -> LinuxResult<usize> {
-        warn!("unix socket recv");
         match self.unixsocket_type {
             UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
             UnixSocketType::SockDgram => {
@@ -684,13 +683,10 @@ impl UnixSocket {
     /// Sends data to a specified address.
     pub fn sendto(&self, buf: &[u8], addr: SocketAddrUnix) -> LinuxResult<usize> {
 
-        info!("unix socket recvfrom");
         match self.unixsocket_type {
             // TODO: sockstream: sendto
             UnixSocketType::SockStream => unimplemented!(),
             UnixSocketType::SockDgram => {
-
-                warn!("unix socket sendto");
 
                 // 获取源地址
                 let mut source_addr = {
@@ -716,7 +712,6 @@ impl UnixSocket {
                         None => return Err(LinuxError::ENOENT), // 目标地址不存在
                     }
                 };
-                warn!("unix socket sendto: {:?}", target_handle);
 
                 // 获取目标套接字的内部结构
                 let target_socket = UNIX_TABLE.read().get(target_handle)
@@ -752,7 +747,6 @@ impl UnixSocket {
 
     /// Receives data from the socket and returns the sender's address.
     pub fn recvfrom(&self, buf: &mut [u8]) -> LinuxResult<(usize, Option<SocketAddrUnix>)> {
-        info!("unix socket recvfrom");
         match self.unixsocket_type {
             // TODO: sockstream: recvfrom
             UnixSocketType::SockStream => unimplemented!(),

@@ -8,10 +8,12 @@
  */
 
 use alloc::{sync::Arc, vec, vec::Vec};
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_char, c_int, c_void, CStr};
 use core::mem::size_of;
 use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use core::sync::atomic::AtomicIsize;
+use alloc::string::String;
+use core::slice;
 
 use axerrno::{LinuxError, LinuxResult};
 use axio::PollState;
@@ -32,6 +34,7 @@ fn addrun_convert(addr: *const ctypes::sockaddr_un) -> SocketAddrUnix {
     }
 }
 
+#[derive(Debug)]
 pub enum UnifiedSocketAddress {
     Net(SocketAddr),
     Unix(SocketAddrUnix),
@@ -345,6 +348,36 @@ fn un_into_sockaddr(addr: SocketAddrUnix) -> (ctypes::sockaddr, ctypes::socklen_
     )
 }
 
+fn un_into_sockaddr1(addr: SocketAddrUnix) -> (ctypes::sockaddr, ctypes::socklen_t) {
+
+    // 1. 手动计算路径名的有效长度（到第一个 null 字符为止）
+    let path_len = addr.sun_path.iter().position(|&c| c == 0).unwrap_or(addr.sun_path.len());
+
+    // 2. 检查路径名长度是否超过最大限制
+    if path_len >= addr.sun_path.len() {
+        panic!("sun_path is too long or not null-terminated");
+    }
+
+    // 3. 初始化 sockaddr_un
+    let mut sockaddr_un = ctypes::sockaddr_un {
+        sun_family: addr.sun_family as ctypes::sa_family_t,
+        sun_path: [0; 108], // 假设 sun_path 的最大长度为 108
+    };
+
+    // 4. 复制路径名到 sockaddr_un.sun_path
+    sockaddr_un.sun_path[..path_len].copy_from_slice(&addr.sun_path[..path_len]);
+
+    // 5. 计算 sockaddr_un 的实际长度
+    let sockaddr_len = size_of::<ctypes::sa_family_t>() + path_len;
+
+    // 6. 将 sockaddr_un 转换为 sockaddr
+    let sockaddr = unsafe {
+        *(&sockaddr_un as *const ctypes::sockaddr_un as *const ctypes::sockaddr)
+    };
+
+    (sockaddr, sockaddr_len as ctypes::socklen_t)
+}
+
 fn into_sockaddr(addr: SocketAddr) -> (ctypes::sockaddr, ctypes::socklen_t) {
     debug!("convert socket address {} into ctypes sockaddr", addr);
     match addr {
@@ -545,13 +578,35 @@ pub unsafe fn sys_recvfrom(
 
         warn!("addrlen before: {}", *addrlen);
         let res = socket.recvfrom(buf)?;
+        warn!("recvfrom res: {:?}", res);
         if let Some(addr) = res.1 {
             match addr {
                 UnifiedSocketAddress::Net(addr) => unsafe {
                     (*socket_addr, *addrlen) = into_sockaddr(addr);
                 },
+                // TODO : fix
                 UnifiedSocketAddress::Unix(addr) => unsafe {
-                    (*socket_addr, *addrlen) = un_into_sockaddr(addr);
+                    let sockaddr_un_size = core::mem::size_of::<SocketAddrUnix>();
+
+                    // 检查用户提供的缓冲区是否足够大
+                    if (*addrlen as usize) < sockaddr_un_size {
+                        warn!("Provided addrlen is too small");
+                        return Err(LinuxError::EINVAL);
+                    }
+
+                    let sockaddr_un = SocketAddrUnix {
+                        sun_family: 1 as u16, //  AF_UNIX
+                        sun_path: addr.sun_path,   
+                    };
+
+                    core::ptr::copy_nonoverlapping(
+                        &sockaddr_un as *const SocketAddrUnix as *const u8,
+                        socket_addr as *mut u8,
+                        sockaddr_un_size,
+                    );
+
+                    // 更新 addrlen 为实际使用的大小
+                    *addrlen = sockaddr_un_size as ctypes::socklen_t;
                 },
             }
         }
