@@ -422,14 +422,11 @@ impl UnixSocket {
     pub fn send(&self, buf: &[u8]) -> LinuxResult<usize> {
         match self.unixsocket_type {
             UnixSocketType::SockDgram => {
-                warn!("unix socket send() failed: DGRAM socket does not support send()");
-                // let mut binding = UNIX_TABLE.read();
-                // let socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
                 self.check_and_set_addr();
                 if self.peer_addr().is_err() {
                     return Err(LinuxError::ENOTCONN);
                 }
-                Err(LinuxError::ENOTCONN)
+                self.sendto(buf, self.peer_addr().unwrap())
             }
             UnixSocketType::SockSeqpacket => Err(LinuxError::ENOTCONN),
             UnixSocketType::SockStream => loop {
@@ -700,7 +697,6 @@ impl UnixSocket {
 
     // Dgram socket will not check if remote exists
     fn connect_dgram(&mut self, addr: SocketAddrUnix) -> LinuxResult {
-        warn!("connect dgram");
         let mut table = UNIX_TABLE.write();
         let socket_inner = table.get_mut(self.get_sockethandle()).unwrap().lock();
         *socket_inner.dgram_connected_addr.lock() = Some(addr);
@@ -714,7 +710,7 @@ impl UnixSocket {
             addr
         };
         if source_addr.sun_path.iter().all(|&c| c == 0) {
-            info!("source addr is null, set to an anonymous address");
+            debug!("source addr is null, set to an anonymous address");
             source_addr = generate_anonymous_address();
             let mut binding = UNIX_TABLE.write();
             let socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
@@ -731,8 +727,8 @@ impl UnixSocket {
             UnixSocketType::SockStream => unimplemented!(),
             UnixSocketType::SockDgram => {
 
-                let mut source_addr = self.check_and_set_addr();
                 print_unix_table();
+                let source_addr = self.check_and_set_addr();
 
                 // 查找目标套接字句柄
                 let target_handle = {

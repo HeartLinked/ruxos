@@ -409,7 +409,7 @@ fn from_sockaddr(
 ///
 /// Return the socket file descriptor.
 pub fn sys_socket(domain: c_int, socktype: c_int, protocol: c_int) -> c_int {
-    warn!("sys_socket <= {} {} {}", domain, socktype, protocol);
+    info!("sys_socket <= {} {} {}", domain, socktype, protocol);
     let (domain, socktype, protocol) = (domain as u32, socktype as u32, protocol as u32);
     pub const _SOCK_STREAM_NONBLOCK: u32 = ctypes::SOCK_STREAM | ctypes::SOCK_NONBLOCK;
     syscall_body!(sys_socket, {
@@ -465,7 +465,7 @@ pub fn sys_bind(
     socket_addr: *const ctypes::sockaddr,
     addrlen: ctypes::socklen_t,
 ) -> c_int {
-    debug!(
+    info!(
         "sys_bind <= {} {:#x} {}",
         socket_fd, socket_addr as usize, addrlen
     );
@@ -483,7 +483,7 @@ pub fn sys_connect(
     socket_addr: *const ctypes::sockaddr,
     addrlen: ctypes::socklen_t,
 ) -> c_int {
-    warn!(
+    info!(
         "sys_connect <= {} {:#x} {}",
         socket_fd, socket_addr as usize, addrlen
     );
@@ -530,8 +530,8 @@ pub fn sys_send(
     len: ctypes::size_t,
     flag: c_int, // currently not used
 ) -> ctypes::ssize_t {
-    warn!(
-        "sys_sendto <= {} {:#x} {} {}",
+    info!(
+        "sys_send <= {} {:#x} {} {}",
         socket_fd, buf_ptr as usize, len, flag
     );
     syscall_body!(sys_send, {
