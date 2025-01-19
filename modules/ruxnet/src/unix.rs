@@ -380,7 +380,7 @@ impl UnixSocket {
                 if now_state != UnixSocketStatus::Closed {
                     return Err(LinuxError::EINVAL);
                 }
-                let _ = self.get_or_create_inode(&addr);
+                let _ = self.update_inode_and_handle(&addr);
                 let mut binding = UNIX_TABLE.write();
                 let mut socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
                 socket_inner.addr.lock().set_addr(&addr);
@@ -388,7 +388,7 @@ impl UnixSocket {
                 Ok(())
             }
             UnixSocketType::SockDgram => {
-                let _ = self.get_or_create_inode(&addr);
+                let _ = self.update_inode_and_handle(&addr);
                 let mut binding = UNIX_TABLE.write();
                 let socket_inner = binding.get_mut(self.get_sockethandle()).unwrap().lock();
                 socket_inner.addr.lock().set_addr(&addr);
@@ -398,8 +398,8 @@ impl UnixSocket {
         }
     }
 
-    /// Get inode from addr, if not exist, create a new unix socket file
-    fn get_or_create_inode(&mut self, addr: &SocketAddrUnix) -> Result<usize, LinuxError> {
+    /// Finds or creates the inode associated with the SocketAddrUnix address and updates the handle related to the socket
+    fn update_inode_and_handle(&mut self, addr: &SocketAddrUnix) -> Result<usize, LinuxError> {
         match get_inode(*addr) {
             Ok(inode_addr) => {
                 UNIX_TABLE
@@ -593,18 +593,6 @@ impl UnixSocket {
         unimplemented!()
     }
 
-    /// Returns the file descriptor for the socket.
-    fn fd(&self) -> c_int {
-        UNIX_TABLE
-            .write()
-            .get_mut(self.get_sockethandle())
-            .unwrap()
-            .lock()
-            .addr
-            .lock()
-            .sun_path[0] as _
-    }
-
     /// Returns the peer address of the socket.
     pub fn peer_addr(&self) -> AxResult<SocketAddrUnix> {
         let now_state = self.get_state();
@@ -766,9 +754,6 @@ impl UnixSocket {
                 if target_inner.datagram_queue.len() >= target_inner.buf.capacity() {
                     return Err(LinuxError::EAGAIN);
                 }
-                target_inner
-                    .datagram_queue
-                    .push_back((source_addr, buf.to_vec()));
                 target_inner
                     .datagram_queue
                     .push_back((source_addr, buf.to_vec()));
