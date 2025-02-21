@@ -16,6 +16,7 @@ pub use self::dir::{DirBuilder, DirEntry, ReadDir};
 pub use self::file::{File, FileType, Metadata, OpenOptions, Permissions};
 
 use alloc::{string::String, vec::Vec};
+use axerrno::AxError;
 use axio::{self as io, prelude::*};
 
 /// Returns an iterator over the entries within a directory.
@@ -87,6 +88,23 @@ pub fn remove_dir(path: &str) -> io::Result<()> {
 /// Removes a file from the filesystem.
 pub fn remove_file(path: &str) -> io::Result<()> {
     crate::root::remove_file(None, path)
+}
+
+pub fn create_node(
+    path: &str,
+    file_type: FileType,
+    // perm: Permissions,
+) -> io::Result<()> {
+    match file_type {
+        FileType::File => {
+            File::create(path)?;
+            Ok(())
+        }
+        FileType::Fifo => {
+            Err(AxError::Unsupported)
+        }
+        _ => Err(AxError::Unsupported),
+    }
 }
 
 /// Rename a file or directory to a new name.

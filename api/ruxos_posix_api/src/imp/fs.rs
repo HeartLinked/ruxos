@@ -13,6 +13,7 @@ use core::ffi::{c_char, c_int, c_long, c_void};
 use axerrno::LinuxError;
 use axio::SeekFrom;
 use ruxfdtable::FileLike;
+use ruxfs::api::FileType;
 use ruxfs::{
     api::set_current_dir,
     fops::{DirEntry, OpenOptions},
@@ -400,6 +401,43 @@ pub fn sys_unlinkat(fd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
         return sys_rmdir(pathname);
     }
     sys_unlink(pathname)
+}
+
+pub fn sys_mknodat(
+    fd: c_int,
+    pathname: *const c_char,
+    mode: ctypes::mode_t,
+    dev: ctypes::dev_t,
+) -> c_int {
+    debug!(
+        "sys_mknod <= fd: {}, pathname: {:?}, mode: {:x}, dev: {:x}",
+        fd,
+        char_ptr_to_str(pathname),
+        mode,
+        dev
+    );
+    if fd == ctypes::AT_FDCWD {
+        sys_mknod(pathname, mode, dev)
+    } else {
+        sys_mknod(pathname, mode, dev)
+    }
+}
+
+pub fn sys_mknod(pathname: *const c_char, mode: ctypes::mode_t, _dev: ctypes::dev_t) -> c_int {
+    syscall_body!(sys_mknod, {
+        let path = char_ptr_to_str(pathname)?;
+        let file_type = match mode & ctypes::S_IFMT {
+            ctypes::S_IFREG => FileType::File,
+            // ctypes::S_IFIFO => FileType::Fifo,
+            _ => return Err(LinuxError::EAFNOSUPPORT),
+        };
+        // let perm_bits = (mode & 0o777) as u16;
+        // let perm = VfsNodePerm::from_bits_truncate(perm_bits);
+
+        debug!("sys_mknod <= path: {:?}, type: {:?}", path, file_type);
+        ruxfs::api::create_node(path, file_type)?;
+        Ok(0)
+    })
 }
 
 /// Creates a new, empty directory at the provided path.
