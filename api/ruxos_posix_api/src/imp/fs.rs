@@ -16,6 +16,7 @@ use core::{
 use axerrno::{LinuxError, LinuxResult};
 use axio::{Error, SeekFrom};
 use ruxfdtable::{FileLike, RuxStat};
+use ruxfs::api::FileType;
 use ruxfs::{
     fops::{self, DirEntry, OpenOptions},
     AbsPath, RelPath,
@@ -518,6 +519,32 @@ pub fn sys_unlinkat(fd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
             }
             Err(e) => return Err(e.into()),
         }
+        Ok(0)
+    })
+}
+
+pub fn sys_mknodat(
+    fd: c_int,
+    pathname: *const c_char,
+    mode: ctypes::mode_t,
+    _dev: ctypes::dev_t,
+) -> c_int {
+    syscall_body!(sys_mknodat, {
+        let path = parse_path_at(fd, pathname)?;
+        info!(
+            "sys_mknodat <= fd: {}, pathname: {:?}, mode: {:x?}, dev: {:x?}",
+            fd, path, mode, _dev
+        );
+        let file_type = match mode & ctypes::S_IFMT {
+            ctypes::S_IFREG => FileType::File,
+            ctypes::S_IFIFO => FileType::Fifo,
+            _ => return Err(LinuxError::EAFNOSUPPORT),
+        };
+        // let perm_bits = (mode & 0o777) as u16;
+        // let perm = VfsNodePerm::from_bits_truncate(perm_bits);
+
+        info!("sys_mknod <= path: {:?}, type: {:?}", path, file_type);
+        ruxfs::api::create_node(&path, file_type)?;
         Ok(0)
     })
 }

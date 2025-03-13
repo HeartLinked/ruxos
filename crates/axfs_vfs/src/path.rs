@@ -80,6 +80,11 @@ impl<'a> AbsPath<'a> {
     pub fn join(&self, rel: &RelPath) -> AbsPath<'static> {
         AbsPath::new_canonicalized(&format!("{}/{}", self.0, rel.0))
     }
+
+    /// Trim the starting `/tmp/` to transform this `AbsPath` into a `RelPath`.
+    pub fn trim_tmp_to_rel(&self) -> RelPath {
+        RelPath(Cow::Borrowed(self.0.trim_start_matches("/tmp/")))
+    }
 }
 
 impl core::ops::Deref for AbsPath<'_> {

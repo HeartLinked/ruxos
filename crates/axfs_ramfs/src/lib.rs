@@ -16,6 +16,7 @@
 extern crate alloc;
 
 mod dir;
+mod fifo;
 mod file;
 
 #[cfg(test)]

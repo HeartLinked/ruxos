@@ -16,6 +16,9 @@ mod file;
 
 use alloc::{string::String, vec::Vec};
 use axerrno::ax_err;
+use axerrno::AxError;
+use axfs_ramfs::RamFileSystem;
+use axfs_vfs::VfsOps;
 use axfs_vfs::{AbsPath, VfsError};
 use axio::{self as io, prelude::*};
 
@@ -98,6 +101,32 @@ pub fn remove_dir(path: &AbsPath) -> io::Result<()> {
         return ax_err!(DirectoryNotEmpty);
     }
     fops::remove_dir(path)
+}
+
+/// Creates a new file at the provided path.
+/// We only support creating regular files and FIFOs.
+///
+///
+pub fn create_node(
+    path: &AbsPath,
+    file_type: FileType,
+    // perm: Permissions,
+) -> io::Result<()> {
+    match file_type {
+        FileType::File => {
+            fops::create_file(&path)?;
+            Ok(())
+        }
+        FileType::Fifo => {
+            if path.starts_with("/tmp/") {
+                fops::create_fifo(&path)?;
+                Ok(())
+            } else {
+                return Err(AxError::Unsupported);
+            }
+        }
+        _ => return Err(AxError::Unsupported),
+    }
 }
 
 /// Removes a file from the filesystem.
