@@ -102,30 +102,24 @@ pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> 
         if node.get_attr()?.is_dir() {
             return Err(LinuxError::EISDIR);
         } else if node.get_attr()?.is_fifo() {
-            warn!("sys_open <= FIFO");
             opts.truncate = false;
-            
-            // 2. 处理非阻塞模式下的错误返回
-            // 注：阻塞模式下的等待逻辑需在文件系统/FIFO实现中处理
+            // process error return in non-blocking mode
+            // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
             if opts.non_blocking {
                 if !opts.read && opts.write {
                     warn!("sys_open <= O_WRONLY | O_NONBLOCK");
-                    // TODO: add has_readers() to FifoNode
-                    // if !node.has_readers()? {
-                    //     return Err(LinuxError::ENXIO);
-                    // }
+                    if !node.fifo_has_readers() {
+                        return Err(LinuxError::ENXIO);
+                    }
                 }
             }
-            
             let file = fops::open_fifo(&path, node, &opts)?;
             return File::new(file).add_to_fd_table(opts)
         } else {
-            warn!("sys_open <= File");
-            // Truncate
+            // for regular file, truncate and open
             if opts.truncate {
                 node.truncate(0)?;
             }
-            // Open
             let file = fops::open_file(&path, node, &opts)?;
             File::new(file).add_to_fd_table(opts)
         }
@@ -172,26 +166,22 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
             }
             Err(e) => return Err(e.into()),
         };
-        // Open file or directory
+        // Open file or directory or FIFO
         if node.get_attr()?.is_dir() {
             let dir = fops::open_dir(&path, node, &opts)?;
             Directory::new(dir, searchable).add_to_fd_table(opts)
         } else if node.get_attr()?.is_fifo() {
-            warn!("sys_open <= FIFO");
             opts.truncate = false;
-            
-            // 2. 处理非阻塞模式下的错误返回
-            // 注：阻塞模式下的等待逻辑需在文件系统/FIFO实现中处理
+            // process error return in non-blocking mode
+            // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
             if opts.non_blocking {
                 if !opts.read && opts.write {
                     warn!("sys_open <= O_WRONLY | O_NONBLOCK");
-                    // TODO: add has_readers() to FifoNode
-                    // if !node.has_readers()? {
-                    //     return Err(LinuxError::ENXIO);
-                    // }
+                    if !node.fifo_has_readers() {
+                        return Err(LinuxError::ENXIO);
+                    }
                 }
             }
-            
             let file = fops::open_fifo(&path, node, &opts)?;
             return File::new(file).add_to_fd_table(opts)
         } else {

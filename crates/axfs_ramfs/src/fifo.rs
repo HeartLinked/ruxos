@@ -187,7 +187,11 @@ impl VfsNodeOps for FifoNode {
         Ok(self.fifo.write(buf).unwrap_or(0))
     }
 
-    fn open_fifo(&self, opt: u16) -> VfsResult {
+    fn fifo_has_readers(&self) -> bool {
+        self.fifo.readers.load(Ordering::SeqCst) > 0
+    }
+
+    fn open_fifo(&self, k:u16) -> VfsResult {
         warn!("open_fifo() is not implemented");
         Ok(())
     }

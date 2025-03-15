@@ -96,16 +96,10 @@ pub trait VfsOps: Send + Sync {
     fn root_dir(&self) -> VfsNodeRef;
 }
 
-/// Node (file/directory) operations.
+/// Node (file/directory/fifo) operations.
 pub trait VfsNodeOps: Send + Sync {
     /// Do something when the node is opened.
-    // fn open(&self, opt: &OpenOptions) -> VfsResult {
     fn open(&self) -> VfsResult {
-        Ok(())
-    }
-
-    ///
-    fn open_fifo(&self, opt: u16) -> VfsResult {
         Ok(())
     }
 
@@ -240,6 +234,16 @@ pub trait VfsNodeOps: Send + Sync {
         self.create(path, ty)?;
 
         Ok(())
+    }
+
+    /// Do something when the node is opened as a fifo.
+    fn open_fifo(&self, k:u16) -> VfsResult {
+        Ok(())
+    }
+
+    /// if the node is a fifo, check if there are readers
+    fn fifo_has_readers(&self) -> bool {
+        false
     }
 }
 
