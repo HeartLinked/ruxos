@@ -17,8 +17,6 @@ mod file;
 use alloc::{string::String, vec::Vec};
 use axerrno::ax_err;
 use axerrno::AxError;
-use axfs_ramfs::RamFileSystem;
-use axfs_vfs::VfsOps;
 use axfs_vfs::{AbsPath, VfsError};
 use axio::{self as io, prelude::*};
 

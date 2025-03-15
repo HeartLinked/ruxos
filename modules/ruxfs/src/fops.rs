@@ -374,6 +374,23 @@ pub fn open_dir(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult
     ))
 }
 
+// pub fn open_fifo(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult<Fifo> {
+//     let attr = node.get_attr()?;
+//     if !attr.is_fifo() {
+//         return ax_err!(NotADirectory);
+//     }
+//     // Ok()
+//     // if !perm_to_cap(attr.perm()).contains(opt.to_cap()) {
+//     //     return ax_err!(PermissionDenied);
+//     // }
+//     // node.open()?;
+//     // Ok(Directory::new(
+//     //     path.to_owned(),
+//     //     node,
+//     //     opt.to_cap() | Cap::EXECUTE,
+//     // ))
+// }
+
 /// Lookup and open a file at an arbitrary path.
 ///
 /// If `path` is relative, it will be resolved against the current working directory.

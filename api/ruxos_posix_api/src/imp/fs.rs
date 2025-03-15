@@ -353,9 +353,12 @@ pub unsafe fn sys_newfstatat(
         let node = fops::lookup(&path)?;
         let st = if node.get_attr()?.is_dir() {
             Directory::new(fops::open_dir(&path, node, &OpenOptions::new())?, false).stat()?
-        } else {
+        } else if node.get_attr()?.is_file() ||  node.get_attr()?.is_fifo() {
             File::new(fops::open_file(&path, node, &OpenOptions::new())?).stat()?
+        } else {
+            return Err(LinuxError::EAFNOSUPPORT);
         };
+
         unsafe {
             (*kst).st_dev = st.st_dev;
             (*kst).st_ino = st.st_ino;

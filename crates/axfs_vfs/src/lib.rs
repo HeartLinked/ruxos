@@ -55,6 +55,7 @@ mod structs;
 
 use alloc::sync::Arc;
 use axerrno::{ax_err, AxError, AxResult};
+use log::warn;
 
 pub use self::path::{AbsPath, RelPath};
 pub use self::structs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodePerm, VfsNodeType};
@@ -108,6 +109,7 @@ pub trait VfsNodeOps: Send + Sync {
 
     /// Get the attributes of the node.
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
+        warn!("get_attr() is not implemented");
         ax_err!(Unsupported)
     }
 

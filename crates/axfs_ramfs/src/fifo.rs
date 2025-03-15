@@ -80,7 +80,6 @@ pub struct Fifo {
 
 impl Fifo {
     pub fn new() -> Self {
-        warn!("new fifo ds");
         Self {
             buffer: Arc::new(Mutex::new(PipeRingBuffer::new())),
             readers: AtomicUsize::new(0),
@@ -188,10 +187,7 @@ impl FifoNode {
 
 impl VfsNodeOps for FifoNode {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        // 对于 FIFO，st_mode 的类型位为 S_IFIFO（0o010000）
-        let st_mode = 0o010000 | 0o600; // rw-------
-        warn!("stmode: {:?}", st_mode);
-        Ok(VfsNodeAttr::new_file(self.ino, 0, st_mode))
+        Ok(VfsNodeAttr::new_fifo(self.ino, 0, 0))
     }
 
     // FIFO 是一种流式设备，因此 offset 无意义，直接调用 FIFO 的 read 实现
