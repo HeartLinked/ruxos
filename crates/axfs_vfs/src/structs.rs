@@ -106,7 +106,7 @@ impl VfsNodePerm {
     }
 
     /// Returns the default permission for a socket.
-    /// 
+    ///
     /// The default permission is `0o777` (owner/group/others can read, write and execute).
     pub const fn default_socket() -> Self {
         Self::from_bits_truncate(0o777)
@@ -324,7 +324,7 @@ impl VfsNodeAttr {
     }
 
     ///Whether the node is a socket.
-     pub const fn is_socket(&self) -> bool {
+    pub const fn is_socket(&self) -> bool {
         self.ty.is_socket()
     }
 }

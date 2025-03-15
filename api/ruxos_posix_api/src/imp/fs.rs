@@ -66,6 +66,9 @@ pub fn flags_to_options(flags: c_int, _mode: ctypes::mode_t) -> OpenOptions {
     }
     if flags & ctypes::O_CLOEXEC != 0 {
         options.cloexec(true);
+    } 
+    if flags & ctypes::O_NONBLOCK != 0 {
+        options.non_blocking(true);
     }
     options
 }
@@ -77,8 +80,8 @@ pub fn flags_to_options(flags: c_int, _mode: ctypes::mode_t) -> OpenOptions {
 pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> c_int {
     syscall_body!(sys_open, {
         let path = parse_path(filename)?;
-        let opts = flags_to_options(flags, mode);
-        debug!("sys_open <= {:?} {:#o} {:#o}", path, flags, mode);
+        let mut opts = flags_to_options(flags, mode);
+        warn!("sys_open <= {:?} {:#o} {:#o}", path, flags, mode);
         // Check flag and attr
         let node = match fops::lookup(&path) {
             Ok(node) => {
@@ -98,14 +101,34 @@ pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> 
         };
         if node.get_attr()?.is_dir() {
             return Err(LinuxError::EISDIR);
+        } else if node.get_attr()?.is_fifo() {
+            warn!("sys_open <= FIFO");
+            opts.truncate = false;
+            
+            // 2. 处理非阻塞模式下的错误返回
+            // 注：阻塞模式下的等待逻辑需在文件系统/FIFO实现中处理
+            if opts.non_blocking {
+                if !opts.read && opts.write {
+                    warn!("sys_open <= O_WRONLY | O_NONBLOCK");
+                    // TODO: add has_readers() to FifoNode
+                    // if !node.has_readers()? {
+                    //     return Err(LinuxError::ENXIO);
+                    // }
+                }
+            }
+            
+            let file = fops::open_fifo(&path, node, &opts)?;
+            return File::new(file).add_to_fd_table(opts)
+        } else {
+            warn!("sys_open <= File");
+            // Truncate
+            if opts.truncate {
+                node.truncate(0)?;
+            }
+            // Open
+            let file = fops::open_file(&path, node, &opts)?;
+            File::new(file).add_to_fd_table(opts)
         }
-        // Truncate
-        if opts.truncate {
-            node.truncate(0)?;
-        }
-        // Open
-        let file = fops::open_file(&path, node, &opts)?;
-        File::new(file).add_to_fd_table(opts)
     })
 }
 
@@ -113,10 +136,10 @@ pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> 
 pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mode_t) -> c_int {
     syscall_body!(sys_openat, {
         let path = parse_path_at(fd, path)?;
-        let opts = flags_to_options(flags, mode);
+        let mut opts = flags_to_options(flags, mode);
         let open_dir = flags as u32 & ctypes::O_DIRECTORY != 0;
         let searchable = flags as u32 & ctypes::O_SEARCH != 0;
-        debug!(
+        warn!(
             "sys_openat <= {}, {:?}, {:#o}, {:#o}",
             fd, path, flags, mode
         );
@@ -153,6 +176,24 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
         if node.get_attr()?.is_dir() {
             let dir = fops::open_dir(&path, node, &opts)?;
             Directory::new(dir, searchable).add_to_fd_table(opts)
+        } else if node.get_attr()?.is_fifo() {
+            warn!("sys_open <= FIFO");
+            opts.truncate = false;
+            
+            // 2. 处理非阻塞模式下的错误返回
+            // 注：阻塞模式下的等待逻辑需在文件系统/FIFO实现中处理
+            if opts.non_blocking {
+                if !opts.read && opts.write {
+                    warn!("sys_open <= O_WRONLY | O_NONBLOCK");
+                    // TODO: add has_readers() to FifoNode
+                    // if !node.has_readers()? {
+                    //     return Err(LinuxError::ENXIO);
+                    // }
+                }
+            }
+            
+            let file = fops::open_fifo(&path, node, &opts)?;
+            return File::new(file).add_to_fd_table(opts)
         } else {
             let file = fops::open_file(&path, node, &opts)?;
             File::new(file).add_to_fd_table(opts)
@@ -353,7 +394,7 @@ pub unsafe fn sys_newfstatat(
         let node = fops::lookup(&path)?;
         let st = if node.get_attr()?.is_dir() {
             Directory::new(fops::open_dir(&path, node, &OpenOptions::new())?, false).stat()?
-        } else if node.get_attr()?.is_file() ||  node.get_attr()?.is_fifo() {
+        } else if node.get_attr()?.is_file() || node.get_attr()?.is_fifo() {
             File::new(fops::open_file(&path, node, &OpenOptions::new())?).stat()?
         } else {
             return Err(LinuxError::EAFNOSUPPORT);

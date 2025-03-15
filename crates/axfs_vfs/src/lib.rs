@@ -59,6 +59,7 @@ use log::warn;
 
 pub use self::path::{AbsPath, RelPath};
 pub use self::structs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodePerm, VfsNodeType};
+// use ruxfs::fops::OpenOptions;
 
 /// A wrapper of [`Arc<dyn VfsNodeOps>`].
 pub type VfsNodeRef = Arc<dyn VfsNodeOps>;
@@ -98,7 +99,13 @@ pub trait VfsOps: Send + Sync {
 /// Node (file/directory) operations.
 pub trait VfsNodeOps: Send + Sync {
     /// Do something when the node is opened.
+    // fn open(&self, opt: &OpenOptions) -> VfsResult {
     fn open(&self) -> VfsResult {
+        Ok(())
+    }
+
+    ///
+    fn open_fifo(&self, opt: u16) -> VfsResult {
         Ok(())
     }
 

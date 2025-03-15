@@ -87,22 +87,6 @@ impl Fifo {
         }
     }
 
-    pub fn register_reader(&self) {
-        self.readers.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_reader(&self) {
-        self.readers.fetch_sub(1, Ordering::SeqCst);
-    }
-
-    pub fn register_writer(&self) {
-        self.writers.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_writer(&self) {
-        self.writers.fetch_sub(1, Ordering::SeqCst);
-    }
-
     pub fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
         let mut read_size = 0usize;
         let max_len = buf.len();
@@ -170,19 +154,21 @@ impl FifoNode {
         }
     }
 
-    pub fn open(&self, flags: c_int) {
-        // 假设 O_RDONLY、O_WRONLY、O_RDWR 标志分别表示只读、只写和读写
-        // if flags & libc::O_ACCMODE == libc::O_RDONLY {
-        //     self.fifo.register_reader();
-        // } else if flags & libc::O_ACCMODE == libc::O_WRONLY {
-        //     self.fifo.register_writer();
-        // } else if flags & libc::O_ACCMODE == libc::O_RDWR {
-
-        // TODO: fix this
-        self.fifo.register_reader();
-        self.fifo.register_writer();
-        // }
-    }
+    // /// TODO: fix this
+    // /// 在 open 时，根据打开标志决定注册读或写端，
+    // /// 实际上 open 时需要返回一个封装了 FIFO 节点和打开模式的 File 对象，
+    // /// 这里仅给出节点层面的示例
+    // pub fn open(&self, flags: c_int) {
+    //     // 假设 O_RDONLY、O_WRONLY、O_RDWR 标志分别表示只读、只写和读写
+    //     if flags & libc::O_ACCMODE == libc::O_RDONLY {
+    //         self.fifo.register_reader();
+    //     } else if flags & libc::O_ACCMODE == libc::O_WRONLY {
+    //         self.fifo.register_writer();
+    //     } else if flags & libc::O_ACCMODE == libc::O_RDWR {
+    //         self.fifo.register_reader();
+    //         self.fifo.register_writer();
+    //     }
+    // }
 }
 
 impl VfsNodeOps for FifoNode {
@@ -200,6 +186,41 @@ impl VfsNodeOps for FifoNode {
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
         Ok(self.fifo.write(buf).unwrap_or(0))
     }
+
+    fn open_fifo(&self, opt: u16) -> VfsResult {
+        warn!("open_fifo() is not implemented");
+        Ok(())
+    }
+
+    // fn open(&self, mode: &axfs_vfs::OpenFlags) -> VfsResult {
+    //     let flags = mode.bits();
+    //     let is_nonblock = flags.contains(OpenFlags::O_NONBLOCK);
+
+    //     // 更新计数器
+    //     if flags.contains(OpenFlags::O_RDONLY) {
+    //         self.fifo.readers.fetch_add(1, Ordering::SeqCst);
+    //     }
+    //     if flags.contains(OpenFlags::O_WRONLY) {
+    //         self.fifo.writers.fetch_add(1, Ordering::SeqCst);
+    //     }
+
+    //     // 阻塞等待另一端打开（若需要）
+    //     match (flags.contains(OpenFlags::O_RDONLY), flags.contains(OpenFlags::O_WRONLY)) {
+    //         (true, false) => { // 只读模式：等待至少一个写端
+    //             while !is_nonblock && self.fifo.writers.load(Ordering::SeqCst) == 0 {
+    //                 sched_yield();
+    //             }
+    //         }
+    //         (false, true) => { // 只写模式：等待至少一个读端
+    //             while !is_nonblock && self.fifo.readers.load(Ordering::SeqCst) == 0 {
+    //                 sched_yield();
+    //             }
+    //         }
+    //         _ => {} // 其他模式（如 O_RDWR）暂不处理
+    //     }
+
+    //     Ok(())
+    // }
 
     // FIFO 不支持截断操作，可以直接忽略
     fn truncate(&self, _size: u64) -> VfsResult {

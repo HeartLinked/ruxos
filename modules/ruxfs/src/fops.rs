@@ -210,6 +210,8 @@ pub struct OpenOptions {
     pub create_new: bool,
     /// Mark the file as close-on-exec.
     pub cloexec: bool,
+    /// whether the file is non-blocking(for fifo)
+    pub non_blocking: bool,
     // system-specific
     _custom_flags: i32,
     _mode: u32,
@@ -227,6 +229,7 @@ impl OpenOptions {
             create: false,
             create_new: false,
             cloexec: false,
+            non_blocking: false,
             // system-specific
             _custom_flags: 0,
             _mode: 0o666,
@@ -259,6 +262,11 @@ impl OpenOptions {
     /// Sets the option to close the file after exec.
     pub fn cloexec(&mut self, cloexec: bool) {
         self.cloexec = cloexec;
+    }
+    /// Sets the option to open the file in non-blocking mode.
+    /// This is only valid for FIFOs.
+    pub fn non_blocking(&mut self, non_blocking: bool) {
+        self.non_blocking = non_blocking;
     }
     /// Convert to capability.
     pub fn to_cap(&self) -> Cap {
@@ -374,22 +382,17 @@ pub fn open_dir(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult
     ))
 }
 
-// pub fn open_fifo(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult<Fifo> {
-//     let attr = node.get_attr()?;
-//     if !attr.is_fifo() {
-//         return ax_err!(NotADirectory);
-//     }
-//     // Ok()
-//     // if !perm_to_cap(attr.perm()).contains(opt.to_cap()) {
-//     //     return ax_err!(PermissionDenied);
-//     // }
-//     // node.open()?;
-//     // Ok(Directory::new(
-//     //     path.to_owned(),
-//     //     node,
-//     //     opt.to_cap() | Cap::EXECUTE,
-//     // ))
-// }
+pub fn open_fifo(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult<File> {
+    let attr = node.get_attr()?;
+    if !attr.is_fifo() {
+        return ax_err!(NotADirectory);
+    }
+    if !perm_to_cap(attr.perm()).contains(opt.to_cap()) {
+        return ax_err!(PermissionDenied);
+    }
+    node.open_fifo(1 as u16)?;
+    Ok(File::new(path.to_owned(), node, opt.to_cap(), opt.append))
+}
 
 /// Lookup and open a file at an arbitrary path.
 ///
