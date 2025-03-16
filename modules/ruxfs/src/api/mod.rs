@@ -104,7 +104,7 @@ pub fn remove_dir(path: &AbsPath) -> io::Result<()> {
 /// Creates a new file at the provided path.
 /// We only support creating regular files and FIFOs.
 ///
-///
+/// TODO: support permissions for sys_mknod and create_node.
 pub fn create_node(
     path: &AbsPath,
     file_type: FileType,

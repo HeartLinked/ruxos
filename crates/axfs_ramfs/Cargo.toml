@@ -10,7 +10,6 @@ repository = "https://github.com/rcore-os/arceos/tree/main/crates/axfs_ramfs"
 documentation = "https://rcore-os.github.io/arceos/axfs_ramfs/index.html"
 
 [features]
-multitask = []
 
 [dependencies]
 axfs_vfs = { path = "../axfs_vfs" }

@@ -215,10 +215,12 @@ impl VfsNodeOps for FifoNode {
         Ok(())
     }
 
+    // fifo does not support truncate
     fn truncate(&self, _size: u64) -> VfsResult {
         Ok(())
     }
 
+    // fifo does not support fsync
     fn fsync(&self) -> VfsResult {
         Ok(())
     }
@@ -226,9 +228,11 @@ impl VfsNodeOps for FifoNode {
     impl_vfs_non_dir_default! {}
 }
 
+// here, we cannot use ruxtask for possible cyclic package dependency.
+// so we use the following code to simulate the behavior of ruxtask::sched_yield.
+// actually, sched_yield() is similar to sys_sched_yield() in ruxos_posix_api,
+// the only difference is that we deleted the `#[cfg(feature = "multitask")]` attribute.
 fn sched_yield() {
-    #[cfg(feature = "multitask")]
-    ruxtask::yield_now();
     #[cfg(not(feature = "multitask"))]
     if cfg!(feature = "irq") {
         ruxhal::arch::wait_for_irqs();
