@@ -194,11 +194,11 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     #[cfg(feature = "alloc")]
     init_allocator();
 
-    #[cfg(feature = "tty")]
-    tty::init();
+    ruxtty::init_tty();
 
     info!("Initialize platform devices...");
-    ruxhal::platform_init();
+
+    ruxhal::platform_init(cpu_id);
 
     #[cfg(feature = "rand")]
     ruxrand::init(cpu_id);
@@ -289,6 +289,14 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     unsafe {
         let mut argc: c_int = 0;
         init_cmdline(&mut argc);
+        #[cfg(feature = "alloc")]
+        {
+            let (mem_base, mem_size) = ruxdtb::get_memory_info();
+            info!(
+                "memory base: 0x{:x}, memory size: 0x{:x}",
+                mem_base, mem_size
+            );
+        }
         #[cfg(not(feature = "musl"))]
         main(argc, argv);
         #[cfg(feature = "musl")]
