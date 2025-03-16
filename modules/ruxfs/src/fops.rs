@@ -129,7 +129,22 @@ impl File {
 
 impl Drop for File {
     fn drop(&mut self) {
-        unsafe { self.node.access_unchecked().release().ok() };
+        unsafe {
+            let attr = self.node.access_unchecked().get_attr().unwrap();
+            match attr.file_type() {
+                FileType::File => {
+                    self.node.access_unchecked().release().ok();
+                }
+                FileType::Fifo => {
+                    let (read, write) = (
+                        self.node.access(Cap::READ).is_ok(),
+                        self.node.access(Cap::WRITE).is_ok(),
+                    );
+                    self.node.access_unchecked().release_fifo(read, write).ok();
+                }
+                _ => unimplemented!(),
+            }
+        }
     }
 }
 
@@ -390,7 +405,7 @@ pub fn open_fifo(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResul
     if !perm_to_cap(attr.perm()).contains(opt.to_cap()) {
         return ax_err!(PermissionDenied);
     }
-    node.open_fifo(1 as u16)?;
+    node.open_fifo(opt.read, opt.write, opt.non_blocking)?;
     Ok(File::new(path.to_owned(), node, opt.to_cap(), opt.append))
 }
 

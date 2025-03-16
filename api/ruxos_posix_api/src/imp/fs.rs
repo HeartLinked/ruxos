@@ -66,7 +66,7 @@ pub fn flags_to_options(flags: c_int, _mode: ctypes::mode_t) -> OpenOptions {
     }
     if flags & ctypes::O_CLOEXEC != 0 {
         options.cloexec(true);
-    } 
+    }
     if flags & ctypes::O_NONBLOCK != 0 {
         options.non_blocking(true);
     }
@@ -81,7 +81,7 @@ pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> 
     syscall_body!(sys_open, {
         let path = parse_path(filename)?;
         let mut opts = flags_to_options(flags, mode);
-        warn!("sys_open <= {:?} {:#o} {:#o}", path, flags, mode);
+        debug!("sys_open <= {:?} {:#o} {:#o}", path, flags, mode);
         // Check flag and attr
         let node = match fops::lookup(&path) {
             Ok(node) => {
@@ -107,14 +107,13 @@ pub fn sys_open(filename: *const c_char, flags: c_int, mode: ctypes::mode_t) -> 
             // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
             if opts.non_blocking {
                 if !opts.read && opts.write {
-                    warn!("sys_open <= O_WRONLY | O_NONBLOCK");
                     if !node.fifo_has_readers() {
                         return Err(LinuxError::ENXIO);
                     }
                 }
             }
             let file = fops::open_fifo(&path, node, &opts)?;
-            return File::new(file).add_to_fd_table(opts)
+            return File::new(file).add_to_fd_table(opts);
         } else {
             // for regular file, truncate and open
             if opts.truncate {
@@ -133,7 +132,7 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
         let mut opts = flags_to_options(flags, mode);
         let open_dir = flags as u32 & ctypes::O_DIRECTORY != 0;
         let searchable = flags as u32 & ctypes::O_SEARCH != 0;
-        warn!(
+        debug!(
             "sys_openat <= {}, {:?}, {:#o}, {:#o}",
             fd, path, flags, mode
         );
@@ -176,14 +175,13 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
             // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
             if opts.non_blocking {
                 if !opts.read && opts.write {
-                    warn!("sys_open <= O_WRONLY | O_NONBLOCK");
                     if !node.fifo_has_readers() {
                         return Err(LinuxError::ENXIO);
                     }
                 }
             }
             let file = fops::open_fifo(&path, node, &opts)?;
-            return File::new(file).add_to_fd_table(opts)
+            return File::new(file).add_to_fd_table(opts);
         } else {
             let file = fops::open_file(&path, node, &opts)?;
             File::new(file).add_to_fd_table(opts)
@@ -563,9 +561,10 @@ pub fn sys_mknodat(
     mode: ctypes::mode_t,
     _dev: ctypes::dev_t,
 ) -> c_int {
+    // TODO: implement permissions mode
     syscall_body!(sys_mknodat, {
         let path = parse_path_at(fd, pathname)?;
-        info!(
+        debug!(
             "sys_mknodat <= fd: {}, pathname: {:?}, mode: {:x?}, dev: {:x?}",
             fd, path, mode, _dev
         );
@@ -574,8 +573,6 @@ pub fn sys_mknodat(
             ctypes::S_IFIFO => FileType::Fifo,
             _ => return Err(LinuxError::EAFNOSUPPORT),
         };
-        // let perm_bits = (mode & 0o777) as u16;
-        // let perm = VfsNodePerm::from_bits_truncate(perm_bits);
 
         info!("sys_mknod <= path: {:?}, type: {:?}", path, file_type);
         ruxfs::api::create_node(&path, file_type)?;

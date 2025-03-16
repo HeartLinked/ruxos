@@ -55,7 +55,6 @@ mod structs;
 
 use alloc::sync::Arc;
 use axerrno::{ax_err, AxError, AxResult};
-use log::warn;
 
 pub use self::path::{AbsPath, RelPath};
 pub use self::structs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodePerm, VfsNodeType};
@@ -110,7 +109,6 @@ pub trait VfsNodeOps: Send + Sync {
 
     /// Get the attributes of the node.
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        warn!("get_attr() is not implemented");
         ax_err!(Unsupported)
     }
 
@@ -237,7 +235,12 @@ pub trait VfsNodeOps: Send + Sync {
     }
 
     /// Do something when the node is opened as a fifo.
-    fn open_fifo(&self, k:u16) -> VfsResult {
+    fn open_fifo(&self, _read: bool, _write: bool, _non_blocking: bool) -> VfsResult {
+        Ok(())
+    }
+
+    /// Do something when the node is closed as a fifo.
+    fn release_fifo(&self, _read: bool, _write: bool) -> VfsResult {
         Ok(())
     }
 

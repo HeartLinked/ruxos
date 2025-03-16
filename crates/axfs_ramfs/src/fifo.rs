@@ -1,11 +1,9 @@
 use alloc::sync::Arc;
 use axerrno::{LinuxError, LinuxResult};
 use axfs_vfs::{impl_vfs_non_dir_default, VfsNodeAttr, VfsNodeOps, VfsResult};
-use core::ffi::c_int;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use log::warn;
+use log::debug;
 use spin::Mutex;
-// use ruxos_posix_api::ctypes;
 
 #[derive(Copy, Clone, PartialEq)]
 enum RingBufferStatus {
@@ -14,7 +12,6 @@ enum RingBufferStatus {
     Normal,
 }
 
-// const RING_BUFFER_SIZE: usize = ruxconfig::PIPE_BUFFER_SIZE;
 const RING_BUFFER_SIZE: usize = 1024;
 
 pub struct PipeRingBuffer {
@@ -88,54 +85,65 @@ impl Fifo {
     }
 
     pub fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
+        debug!("read data from fifo");
         let mut read_size = 0usize;
         let max_len = buf.len();
-        let mut ring_buffer = self.buffer.lock();
+
         loop {
+            let mut ring_buffer = self.buffer.lock();
             let available = ring_buffer.available_read();
             if available == 0 {
                 if self.writers.load(Ordering::SeqCst) == 0 {
+                    // only EOF when no writer and no data
                     return Ok(0);
                 } else {
                     drop(ring_buffer);
                     sched_yield();
-                    ring_buffer = self.buffer.lock();
+                    // must continue to wait for data
+                    continue;
                 }
-            } else {
-                break;
             }
-        }
-        let available = ring_buffer.available_read();
-        for _ in 0..available {
-            if read_size == max_len {
-                return Ok(read_size);
+            for _ in 0..available {
+                if read_size == max_len {
+                    return Ok(read_size);
+                }
+                buf[read_size] = ring_buffer.read_byte();
+                read_size += 1;
             }
-            buf[read_size] = ring_buffer.read_byte();
-            read_size += 1;
+            break;
         }
         Ok(read_size)
     }
 
     pub fn write(&self, buf: &[u8]) -> LinuxResult<usize> {
+        debug!("write data to fifo");
         let mut write_size = 0usize;
         let max_len = buf.len();
+
         loop {
             let mut ring_buffer = self.buffer.lock();
+
+            if self.readers.load(Ordering::SeqCst) == 0 {
+                return Err(LinuxError::EPIPE);
+            }
+
             let available = ring_buffer.available_write();
             if available == 0 {
                 drop(ring_buffer);
-                if self.readers.load(Ordering::SeqCst) == 0 {
-                    return Err(LinuxError::EPIPE);
-                }
                 sched_yield();
                 continue;
             }
+
             for _ in 0..available {
                 if write_size == max_len {
-                    return Ok(write_size);
+                    break;
                 }
                 ring_buffer.write_byte(buf[write_size]);
                 write_size += 1;
+            }
+
+            if write_size > 0 {
+                return Ok(write_size);
             }
         }
     }
@@ -153,22 +161,6 @@ impl FifoNode {
             fifo: Fifo::new(),
         }
     }
-
-    // /// TODO: fix this
-    // /// 在 open 时，根据打开标志决定注册读或写端，
-    // /// 实际上 open 时需要返回一个封装了 FIFO 节点和打开模式的 File 对象，
-    // /// 这里仅给出节点层面的示例
-    // pub fn open(&self, flags: c_int) {
-    //     // 假设 O_RDONLY、O_WRONLY、O_RDWR 标志分别表示只读、只写和读写
-    //     if flags & libc::O_ACCMODE == libc::O_RDONLY {
-    //         self.fifo.register_reader();
-    //     } else if flags & libc::O_ACCMODE == libc::O_WRONLY {
-    //         self.fifo.register_writer();
-    //     } else if flags & libc::O_ACCMODE == libc::O_RDWR {
-    //         self.fifo.register_reader();
-    //         self.fifo.register_writer();
-    //     }
-    // }
 }
 
 impl VfsNodeOps for FifoNode {
@@ -176,13 +168,10 @@ impl VfsNodeOps for FifoNode {
         Ok(VfsNodeAttr::new_fifo(self.ino, 0, 0))
     }
 
-    // FIFO 是一种流式设备，因此 offset 无意义，直接调用 FIFO 的 read 实现
     fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        // 此处直接调用 FIFO 的 read 方法
         Ok(self.fifo.read(buf).unwrap_or(0))
     }
 
-    // 同理，write 操作忽略 offset
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
         Ok(self.fifo.write(buf).unwrap_or(0))
     }
@@ -191,43 +180,43 @@ impl VfsNodeOps for FifoNode {
         self.fifo.readers.load(Ordering::SeqCst) > 0
     }
 
-    fn open_fifo(&self, k:u16) -> VfsResult {
-        warn!("open_fifo() is not implemented");
+    fn open_fifo(&self, read: bool, write: bool, non_blocking: bool) -> VfsResult {
+        debug!("open a fifo node");
+        if read {
+            self.fifo.readers.fetch_add(1, Ordering::SeqCst);
+            if !non_blocking {
+                while self.fifo.writers.load(Ordering::SeqCst) == 0 {
+                    sched_yield();
+                }
+            }
+        }
+        if write {
+            self.fifo.writers.fetch_add(1, Ordering::SeqCst);
+            if !non_blocking {
+                while self.fifo.readers.load(Ordering::SeqCst) == 0 {
+                    sched_yield();
+                }
+            }
+        }
         Ok(())
     }
 
-    // fn open(&self, mode: &axfs_vfs::OpenFlags) -> VfsResult {
-    //     let flags = mode.bits();
-    //     let is_nonblock = flags.contains(OpenFlags::O_NONBLOCK);
+    fn release_fifo(&self, read: bool, write: bool) -> VfsResult {
+        debug!("release a fifo node");
+        if read {
+            self.fifo.readers.fetch_sub(1, Ordering::SeqCst);
+        }
+        if write {
+            self.fifo.writers.fetch_sub(1, Ordering::SeqCst);
+        }
+        Ok(())
+    }
 
-    //     // 更新计数器
-    //     if flags.contains(OpenFlags::O_RDONLY) {
-    //         self.fifo.readers.fetch_add(1, Ordering::SeqCst);
-    //     }
-    //     if flags.contains(OpenFlags::O_WRONLY) {
-    //         self.fifo.writers.fetch_add(1, Ordering::SeqCst);
-    //     }
-
-    //     // 阻塞等待另一端打开（若需要）
-    //     match (flags.contains(OpenFlags::O_RDONLY), flags.contains(OpenFlags::O_WRONLY)) {
-    //         (true, false) => { // 只读模式：等待至少一个写端
-    //             while !is_nonblock && self.fifo.writers.load(Ordering::SeqCst) == 0 {
-    //                 sched_yield();
-    //             }
-    //         }
-    //         (false, true) => { // 只写模式：等待至少一个读端
-    //             while !is_nonblock && self.fifo.readers.load(Ordering::SeqCst) == 0 {
-    //                 sched_yield();
-    //             }
-    //         }
-    //         _ => {} // 其他模式（如 O_RDWR）暂不处理
-    //     }
-
-    //     Ok(())
-    // }
-
-    // FIFO 不支持截断操作，可以直接忽略
     fn truncate(&self, _size: u64) -> VfsResult {
+        Ok(())
+    }
+
+    fn fsync(&self) -> VfsResult {
         Ok(())
     }
 
