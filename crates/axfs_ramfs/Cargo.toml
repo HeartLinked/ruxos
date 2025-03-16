@@ -17,4 +17,4 @@ spin = "0.9"
 log = "0.4"
 axerrno = { path = "../axerrno" }
 ruxhal = { path = "../../modules/ruxhal" }
-ruxconfig = { path = "../../modules/ruxconfig" }
+ringbuffer = { path = "../ringbuffer" }

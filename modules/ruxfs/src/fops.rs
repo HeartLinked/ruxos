@@ -443,6 +443,13 @@ pub fn create_dir(path: &AbsPath) -> AxResult {
     root_dir().create(&path.to_rel(), VfsNodeType::Dir)
 }
 
+/// Create a socket file given an absolute path.
+///
+/// This function will not check if the socket exists, check it with [`lookup`] first.
+pub fn create_socket(path: &AbsPath) -> AxResult {
+    root_dir().create(&path.to_rel(), VfsNodeType::Socket)
+}
+
 /// Create a directory recursively given an absolute path.
 ///
 /// This function will not check if the directory exists, check it with [`lookup`] first.

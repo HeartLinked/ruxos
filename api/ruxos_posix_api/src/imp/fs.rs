@@ -574,8 +574,6 @@ pub fn sys_mknodat(
             ctypes::S_IFIFO => FileType::Fifo,
             _ => return Err(LinuxError::EAFNOSUPPORT),
         };
-
-        info!("sys_mknod <= path: {:?}, type: {:?}", path, file_type);
         ruxfs::api::create_node(&path, file_type)?;
         Ok(0)
     })

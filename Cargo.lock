@@ -184,7 +184,7 @@ dependencies = [
  "axerrno",
  "axfs_vfs",
  "log",
- "ruxconfig",
+ "ringbuffer",
  "ruxhal",
  "spin",
 ]

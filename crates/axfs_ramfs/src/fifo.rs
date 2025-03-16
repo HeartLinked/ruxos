@@ -3,74 +3,11 @@ use axerrno::{LinuxError, LinuxResult};
 use axfs_vfs::{impl_vfs_non_dir_default, VfsNodeAttr, VfsNodeOps, VfsResult};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use log::debug;
+use ringbuffer::RingBuffer;
 use spin::Mutex;
 
-#[derive(Copy, Clone, PartialEq)]
-enum RingBufferStatus {
-    Full,
-    Empty,
-    Normal,
-}
-
-const RING_BUFFER_SIZE: usize = 1024;
-
-pub struct PipeRingBuffer {
-    arr: [u8; RING_BUFFER_SIZE],
-    head: usize,
-    tail: usize,
-    status: RingBufferStatus,
-}
-
-impl PipeRingBuffer {
-    pub const fn new() -> Self {
-        Self {
-            arr: [0; RING_BUFFER_SIZE],
-            head: 0,
-            tail: 0,
-            status: RingBufferStatus::Empty,
-        }
-    }
-
-    pub fn write_byte(&mut self, byte: u8) {
-        self.status = RingBufferStatus::Normal;
-        self.arr[self.tail] = byte;
-        self.tail = (self.tail + 1) % RING_BUFFER_SIZE;
-        if self.tail == self.head {
-            self.status = RingBufferStatus::Full;
-        }
-    }
-
-    pub fn read_byte(&mut self) -> u8 {
-        self.status = RingBufferStatus::Normal;
-        let c = self.arr[self.head];
-        self.head = (self.head + 1) % RING_BUFFER_SIZE;
-        if self.head == self.tail {
-            self.status = RingBufferStatus::Empty;
-        }
-        c
-    }
-
-    pub fn available_read(&self) -> usize {
-        if self.status == RingBufferStatus::Empty {
-            0
-        } else if self.tail > self.head {
-            self.tail - self.head
-        } else {
-            self.tail + RING_BUFFER_SIZE - self.head
-        }
-    }
-
-    pub fn available_write(&self) -> usize {
-        if self.status == RingBufferStatus::Full {
-            0
-        } else {
-            RING_BUFFER_SIZE - self.available_read()
-        }
-    }
-}
-
 pub struct Fifo {
-    buffer: Arc<Mutex<PipeRingBuffer>>,
+    buffer: Arc<Mutex<RingBuffer>>,
     readers: AtomicUsize,
     writers: AtomicUsize,
 }
@@ -78,7 +15,7 @@ pub struct Fifo {
 impl Fifo {
     pub fn new() -> Self {
         Self {
-            buffer: Arc::new(Mutex::new(PipeRingBuffer::new())),
+            buffer: Arc::new(Mutex::new(RingBuffer::new(1024))),
             readers: AtomicUsize::new(0),
             writers: AtomicUsize::new(0),
         }
@@ -86,65 +23,38 @@ impl Fifo {
 
     pub fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
         debug!("read data from fifo");
-        let mut read_size = 0usize;
-        let max_len = buf.len();
-
         loop {
-            let mut ring_buffer = self.buffer.lock();
-            let available = ring_buffer.available_read();
-            if available == 0 {
+            let mut rb = self.buffer.lock();
+            if rb.available_read() == 0 {
                 if self.writers.load(Ordering::SeqCst) == 0 {
-                    // only EOF when no writer and no data
+                    // when there is no writer and no data in the buffer, return EOF
                     return Ok(0);
                 } else {
-                    drop(ring_buffer);
+                    drop(rb);
                     sched_yield();
-                    // must continue to wait for data
                     continue;
                 }
             }
-            for _ in 0..available {
-                if read_size == max_len {
-                    return Ok(read_size);
-                }
-                buf[read_size] = ring_buffer.read_byte();
-                read_size += 1;
-            }
-            break;
+            // call the read() method of the ring buffer to copy the data to buf
+            let bytes_read = rb.read(buf);
+            return Ok(bytes_read);
         }
-        Ok(read_size)
     }
 
     pub fn write(&self, buf: &[u8]) -> LinuxResult<usize> {
         debug!("write data to fifo");
-        let mut write_size = 0usize;
-        let max_len = buf.len();
-
         loop {
-            let mut ring_buffer = self.buffer.lock();
-
+            let mut rb = self.buffer.lock();
             if self.readers.load(Ordering::SeqCst) == 0 {
+                // when there is no reader, return EPIPE
                 return Err(LinuxError::EPIPE);
             }
-
-            let available = ring_buffer.available_write();
-            if available == 0 {
-                drop(ring_buffer);
-                sched_yield();
-                continue;
+            let bytes_written = rb.write(buf);
+            if bytes_written > 0 {
+                return Ok(bytes_written);
             }
-
-            for _ in 0..available {
-                if write_size == max_len {
-                    break;
-                }
-                ring_buffer.write_byte(buf[write_size]);
-                write_size += 1;
-            }
-
-            if write_size > 0 {
-                return Ok(write_size);
-            }
+            drop(rb);
+            sched_yield();
         }
     }
 }
