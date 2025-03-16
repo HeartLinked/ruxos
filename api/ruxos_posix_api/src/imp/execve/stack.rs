@@ -1,12 +1,9 @@
-use alloc::vec::Vec;
-use ruxtask::task::TaskStack;
+use alloc::{vec, vec::Vec};
 
 const STACK_SIZE: usize = ruxconfig::TASK_STACK_SIZE;
 
 #[derive(Debug)]
 pub struct Stack {
-    /// task stack
-    task_stack: TaskStack,
     /// stack
     data: Vec<u8>,
     /// index of top byte of stack
@@ -16,29 +13,15 @@ pub struct Stack {
 impl Stack {
     /// alloc a stack
     pub fn new() -> Self {
-        let task_stack = TaskStack::alloc(STACK_SIZE);
-        unsafe {
-            let start = task_stack.top().as_mut_ptr().sub(STACK_SIZE);
-
-            Self {
-                task_stack,
-                data: Vec::from_raw_parts(start, STACK_SIZE, STACK_SIZE),
-                top: STACK_SIZE,
-            }
+        Self {
+            data: vec![0u8; STACK_SIZE],
+            top: STACK_SIZE,
         }
     }
 
     /// addr of top of stack
     pub fn sp(&self) -> usize {
         self.data.as_ptr() as usize + self.top
-    }
-
-    pub fn stack_size(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn stack_top(&self) -> usize {
-        self.task_stack.top().into()
     }
 
     /// push data to stack and return the addr of sp
@@ -56,11 +39,5 @@ impl Stack {
         }
 
         sp as usize
-    }
-}
-
-impl Drop for Stack {
-    fn drop(&mut self) {
-        error!("execve's stack dropped. {:#?}", self);
     }
 }

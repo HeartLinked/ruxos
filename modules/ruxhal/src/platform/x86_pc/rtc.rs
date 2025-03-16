@@ -141,12 +141,6 @@ pub struct Rtc {
     nmi: bool,
 }
 
-impl Default for Rtc {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Rtc {
     /// Create new empty RTC
     pub fn new() -> Self {

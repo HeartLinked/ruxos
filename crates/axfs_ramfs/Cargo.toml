@@ -9,12 +9,7 @@ homepage = "https://github.com/rcore-os/arceos"
 repository = "https://github.com/rcore-os/arceos/tree/main/crates/axfs_ramfs"
 documentation = "https://rcore-os.github.io/arceos/axfs_ramfs/index.html"
 
-[features]
-
 [dependencies]
 axfs_vfs = { path = "../axfs_vfs" }
 spin = "0.9"
 log = "0.4"
-axerrno = { path = "../axerrno" }
-ruxhal = { path = "../../modules/ruxhal" }
-ruxconfig = { path = "../../modules/ruxconfig" }

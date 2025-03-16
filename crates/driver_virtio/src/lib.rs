@@ -25,8 +25,6 @@
 
 #[cfg(feature = "block")]
 mod blk;
-#[cfg(feature = "console")]
-mod console;
 #[cfg(feature = "gpu")]
 mod gpu;
 #[cfg(feature = "net")]
@@ -36,8 +34,6 @@ mod v9p;
 
 #[cfg(feature = "block")]
 pub use self::blk::VirtIoBlkDev;
-#[cfg(feature = "console")]
-pub use self::console::VirtIoConsoleDev;
 #[cfg(feature = "gpu")]
 pub use self::gpu::VirtIoGpuDev;
 #[cfg(feature = "net")]
@@ -93,7 +89,6 @@ const fn as_dev_type(t: VirtIoDevType) -> Option<DeviceType> {
         Network => Some(DeviceType::Net),
         GPU => Some(DeviceType::Display),
         _9P => Some(DeviceType::_9P),
-        Console => Some(DeviceType::Char),
         _ => None,
     }
 }

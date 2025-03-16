@@ -16,7 +16,6 @@ members = [
     "crates/driver_block",
     "crates/driver_common",
     "crates/driver_display",
-    "crates/driver_console",
     "crates/driver_net",
     "crates/driver_pci",
     "crates/driver_virtio",
@@ -42,7 +41,6 @@ members = [
     "modules/ruxnet",
     "modules/axsync",
     "modules/rux9p",
-    "modules/ruxmm",
     "modules/ruxconfig",
     "modules/ruxdisplay",
     "modules/ruxdriver",
@@ -52,18 +50,18 @@ members = [
     "modules/ruxruntime",
     "modules/ruxtask",
     "modules/ruxfutex",
-    "modules/ruxrand",
 
     "api/ruxfeat",
     "api/arceos_api",
     "api/ruxos_posix_api",
 
     "ulib/axstd",
+    "ulib/ruxlibc",
     "ulib/ruxmusl",
 
     "apps/display/basic_painting",
     "apps/display/draw_map",
-    "apps/fs/shell"
+    "apps/fs/shell",
 ]
 
 [profile.release]

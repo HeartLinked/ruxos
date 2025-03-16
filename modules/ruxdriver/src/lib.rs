@@ -82,7 +82,7 @@ mod dummy;
 mod structs;
 
 #[cfg(feature = "virtio")]
-pub mod virtio;
+mod virtio;
 
 #[cfg(feature = "ixgbe")]
 mod ixgbe;

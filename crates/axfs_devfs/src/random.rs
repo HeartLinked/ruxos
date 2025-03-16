@@ -30,7 +30,6 @@ fn rand_lcg32() -> u32 {
 impl VfsNodeOps for RandomDev {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
         Ok(VfsNodeAttr::new(
-            6,
             VfsNodePerm::default_file(),
             VfsNodeType::CharDevice,
             0,

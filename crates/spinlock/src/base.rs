@@ -24,23 +24,17 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use kernel_guard::BaseGuard;
 
-use crate::{strategy, Strategy};
-
-/// The default strategy used in spinlocks.
-pub type DefaultStrategy = strategy::Once;
-
 /// A [spin lock](https://en.m.wikipedia.org/wiki/Spinlock) providing mutually
 /// exclusive access to data.
 ///
 /// This is a base struct, the specific behavior depends on the generic
 /// parameter `G` that implements [`BaseGuard`], such as whether to disable
-/// local IRQs or kernel preemption before acquiring the lock. The parameter `S`
-/// that implements [`Strategy`] defines the behavior when encountering contention.
+/// local IRQs or kernel preemption before acquiring the lock.
 ///
 /// For single-core environment (without the "smp" feature), we remove the lock
 /// state, CPU can always get the lock if we follow the proper guard in use.
-pub struct BaseSpinLock<DG: BaseGuard, T: ?Sized, S: Strategy = DefaultStrategy> {
-    _phantom: PhantomData<(DG, S)>,
+pub struct BaseSpinLock<G: BaseGuard, T: ?Sized> {
+    _phantom: PhantomData<G>,
     #[cfg(feature = "smp")]
     lock: AtomicBool,
     data: UnsafeCell<T>,
@@ -58,10 +52,10 @@ pub struct BaseSpinLockGuard<'a, G: BaseGuard, T: ?Sized + 'a> {
 }
 
 // Same unsafe impls as `std::sync::Mutex`
-unsafe impl<G: BaseGuard, T: ?Sized + Send, B: Strategy> Sync for BaseSpinLock<G, T, B> {}
-unsafe impl<G: BaseGuard, T: ?Sized + Send, B: Strategy> Send for BaseSpinLock<G, T, B> {}
+unsafe impl<G: BaseGuard, T: ?Sized + Send> Sync for BaseSpinLock<G, T> {}
+unsafe impl<G: BaseGuard, T: ?Sized + Send> Send for BaseSpinLock<G, T> {}
 
-impl<G: BaseGuard, T, S: Strategy> BaseSpinLock<G, T, S> {
+impl<G: BaseGuard, T> BaseSpinLock<G, T> {
     /// Creates a new [`BaseSpinLock`] wrapping the supplied data.
     #[inline(always)]
     pub const fn new(data: T) -> Self {
@@ -83,20 +77,16 @@ impl<G: BaseGuard, T, S: Strategy> BaseSpinLock<G, T, S> {
     }
 }
 
-impl<G: BaseGuard, T: ?Sized, S: Strategy> BaseSpinLock<G, T, S> {
-    /// Locks the [`BaseSpinLock`] using the given guard type and backoff strategy,
-    /// and returns a guard that permits access to the inner data.
+impl<G: BaseGuard, T: ?Sized> BaseSpinLock<G, T> {
+    /// Locks the [`BaseSpinLock`] and returns a guard that permits access to the inner data.
     ///
     /// The returned value may be dereferenced for data access
     /// and the lock will be dropped when the guard falls out of scope.
-    pub fn lock_as<GT: BaseGuard, ST: Strategy>(&self) -> BaseSpinLockGuard<GT, T> {
-        let irq_state = GT::acquire();
-
+    #[inline(always)]
+    pub fn lock(&self) -> BaseSpinLockGuard<G, T> {
+        let irq_state = G::acquire();
         #[cfg(feature = "smp")]
         {
-            use crate::strategy::{Backoff, Relax};
-
-            let mut backoff = <ST as Strategy>::new_backoff();
             // Can fail to lock even if the spinlock is not locked. May be more efficient than `try_lock`
             // when called in a loop.
             while self
@@ -104,12 +94,9 @@ impl<G: BaseGuard, T: ?Sized, S: Strategy> BaseSpinLock<G, T, S> {
                 .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
                 .is_err()
             {
-                backoff.backoff();
-                let mut relax = <ST as Strategy>::new_relax();
-
                 // Wait until the lock looks unlocked before retrying
                 while self.is_locked() {
-                    relax.relax();
+                    core::hint::spin_loop();
                 }
             }
         }
@@ -120,16 +107,6 @@ impl<G: BaseGuard, T: ?Sized, S: Strategy> BaseSpinLock<G, T, S> {
             #[cfg(feature = "smp")]
             lock: &self.lock,
         }
-    }
-
-    /// Locks the [`BaseSpinLock`] using the "default" strategy specified by lock type,
-    /// and returns a guard that permits access to the inner data.
-    ///
-    /// The returned value may be dereferenced for data access
-    /// and the lock will be dropped when the guard falls out of scope.
-    #[inline(always)]
-    pub fn lock(&self) -> BaseSpinLockGuard<G, T> {
-        self.lock_as::<G, S>()
     }
 
     /// Returns `true` if the lock is currently held.
@@ -206,14 +183,14 @@ impl<G: BaseGuard, T: ?Sized, S: Strategy> BaseSpinLock<G, T, S> {
     }
 }
 
-impl<G: BaseGuard, T: ?Sized + Default, S: Strategy> Default for BaseSpinLock<G, T, S> {
+impl<G: BaseGuard, T: ?Sized + Default> Default for BaseSpinLock<G, T> {
     #[inline(always)]
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<G: BaseGuard, T: ?Sized + fmt::Debug, S: Strategy> fmt::Debug for BaseSpinLock<G, T, S> {
+impl<G: BaseGuard, T: ?Sized + fmt::Debug> fmt::Debug for BaseSpinLock<G, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.try_lock() {
             Some(guard) => write!(f, "SpinLock {{ data: ")

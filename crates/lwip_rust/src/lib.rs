@@ -4,5 +4,4 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(missing_docs)]
-#[rustfmt::skip]
 pub mod bindings;

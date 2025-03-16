@@ -104,13 +104,10 @@ fn do_ls(args: &str) {
         if print_name {
             println!("{}:", name);
         }
-        let mut entries = Vec::new();
-        for entry in fs::read_dir(name)? {
-            match entry {
-                Ok(entry) => entries.push(entry.file_name()),
-                Err(e) => return Err(e),
-            }
-        }
+        let mut entries = fs::read_dir(name)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect::<Vec<_>>();
         entries.sort();
 
         for entry in entries {

@@ -7,79 +7,106 @@
  *   See the Mulan PSL v2 for more details.
  */
 
-use alloc::{borrow::ToOwned, string::String, vec};
-use axerrno::ax_err;
-use axfs_vfs::{AbsPath, VfsDirEntry, VfsError};
+use alloc::string::String;
 use axio::Result;
-use core::{fmt, iter::Iterator, str};
+use core::fmt;
 
-use super::{FileAttr, FileType};
+use super::FileType;
 use crate::fops;
 
-/// A wrapped directory type.
-///
-/// Provides a way to open a directory and iterate over its contents.
-pub struct Directory {
+/// Iterator over the entries in a directory.
+pub struct ReadDir<'a> {
+    path: &'a str,
     inner: fops::Directory,
+    buf_pos: usize,
+    buf_end: usize,
+    end_of_stream: bool,
+    dirent_buf: [fops::DirEntry; 31],
 }
 
-impl Directory {
-    /// Opens a directory for reading entries.
-    pub fn open(path: &AbsPath) -> Result<Self> {
-        let node = fops::lookup(path)?;
-        let inner = fops::open_dir(path, node, &fops::OpenOptions::new())?;
-        Ok(Self { inner })
-    }
-
-    /// Get attributes of the directory.
-    pub fn get_attr(&self) -> Result<FileAttr> {
-        self.inner.get_attr()
-    }
-
-    /// Reads directory entries starts from the current position into the
-    /// given buffer, returns the number of entries read.
-    ///
-    /// After the read, the cursor of the directory will be advanced by the
-    /// number of entries read.
-    pub fn read_dir(&mut self, buf: &mut [DirEntry]) -> Result<usize> {
-        let mut buffer = vec![fops::DirEntry::default(); buf.len()];
-        let len = self.inner.read_dir(&mut buffer)?;
-        for (i, entry) in buffer.iter().enumerate().take(len) {
-            buf[i] = DirEntry {
-                entry_name: unsafe { str::from_utf8_unchecked(entry.name_as_bytes()).to_owned() },
-                entry_type: entry.entry_type(),
-            };
-        }
-        Ok(len)
-    }
-}
-
-/// Implements the iterator trait for the directory.
-impl Iterator for Directory {
-    type Item = Result<DirEntry>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut buf = [VfsDirEntry::default()];
-        match self.inner.read_dir(buf.as_mut_slice()) {
-            Ok(0) => None,
-            Ok(1) => Some(Ok(DirEntry {
-                entry_name: unsafe { str::from_utf8_unchecked(buf[0].name_as_bytes()).to_owned() },
-                entry_type: buf[0].entry_type(),
-            })),
-            Ok(_) => unreachable!(),
-            Err(e) => Some(Err(e)),
-        }
-    }
-}
-
-/// Entry type used by `Directory::read_dir`.
-#[derive(Default, Clone)]
-pub struct DirEntry {
+/// Entries returned by the [`ReadDir`] iterator.
+pub struct DirEntry<'a> {
+    dir_path: &'a str,
     entry_name: String,
     entry_type: FileType,
 }
 
-impl DirEntry {
+/// A builder used to create directories in various manners.
+#[derive(Default, Debug)]
+pub struct DirBuilder {
+    recursive: bool,
+}
+
+impl<'a> ReadDir<'a> {
+    pub(super) fn new(path: &'a str) -> Result<Self> {
+        let mut opts = fops::OpenOptions::new();
+        opts.read(true);
+        let inner = fops::Directory::open_dir(path, &opts)?;
+        const EMPTY: fops::DirEntry = fops::DirEntry::default();
+        let dirent_buf = [EMPTY; 31];
+        Ok(ReadDir {
+            path,
+            inner,
+            end_of_stream: false,
+            buf_pos: 0,
+            buf_end: 0,
+            dirent_buf,
+        })
+    }
+}
+
+impl<'a> Iterator for ReadDir<'a> {
+    type Item = Result<DirEntry<'a>>;
+
+    fn next(&mut self) -> Option<Result<DirEntry<'a>>> {
+        if self.end_of_stream {
+            return None;
+        }
+
+        loop {
+            if self.buf_pos >= self.buf_end {
+                match self.inner.read_dir(&mut self.dirent_buf) {
+                    Ok(n) => {
+                        if n == 0 {
+                            self.end_of_stream = true;
+                            return None;
+                        }
+                        self.buf_pos = 0;
+                        self.buf_end = n;
+                    }
+                    Err(e) => {
+                        self.end_of_stream = true;
+                        return Some(Err(e));
+                    }
+                }
+            }
+            let entry = &self.dirent_buf[self.buf_pos];
+            self.buf_pos += 1;
+            let name_bytes = entry.name_as_bytes();
+            if name_bytes == b"." || name_bytes == b".." {
+                continue;
+            }
+            let entry_name = unsafe { core::str::from_utf8_unchecked(name_bytes).into() };
+            let entry_type = entry.entry_type();
+
+            return Some(Ok(DirEntry {
+                dir_path: self.path,
+                entry_name,
+                entry_type,
+            }));
+        }
+    }
+}
+
+impl<'a> DirEntry<'a> {
+    /// Returns the full path to the file that this entry represents.
+    ///
+    /// The full path is created by joining the original path to `read_dir`
+    /// with the filename of this entry.
+    pub fn path(&self) -> String {
+        String::from(self.dir_path.trim_end_matches('/')) + "/" + &self.entry_name
+    }
+
     /// Returns the bare file name of this directory entry without any other
     /// leading path component.
     pub fn file_name(&self) -> String {
@@ -92,16 +119,10 @@ impl DirEntry {
     }
 }
 
-impl fmt::Debug for DirEntry {
+impl fmt::Debug for DirEntry<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("DirEntry").field(&self.file_name()).finish()
+        f.debug_tuple("DirEntry").field(&self.path()).finish()
     }
-}
-
-/// A builder used to create directories in various manners.
-#[derive(Default, Debug)]
-pub struct DirBuilder {
-    recursive: bool,
 }
 
 impl DirBuilder {
@@ -121,27 +142,17 @@ impl DirBuilder {
 
     /// Creates the specified directory with the options configured in this
     /// builder.
-    pub fn create(&self, path: &AbsPath) -> Result<()> {
+    pub fn create(&self, path: &str) -> Result<()> {
         if self.recursive {
             self.create_dir_all(path)
         } else {
-            match fops::lookup(path) {
-                Ok(_) => return ax_err!(AlreadyExists),
-                Err(VfsError::NotFound) => {}
-                Err(e) => return ax_err!(e),
-            }
-            fops::create_dir(path)
+            crate::root::create_dir(None, path)
         }
     }
 
     /// Recursively create a directory and all of its parent components if they
     /// are missing.
-    pub fn create_dir_all(&self, path: &AbsPath) -> Result<()> {
-        match fops::lookup(path) {
-            Ok(_) => return ax_err!(AlreadyExists),
-            Err(VfsError::NotFound) => {}
-            Err(e) => return ax_err!(e),
-        }
-        fops::create_dir_all(path)
+    pub fn create_dir_all(&self, path: &str) -> Result<()> {
+        crate::root::create_dir_all(None, path)
     }
 }

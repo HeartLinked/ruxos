@@ -10,7 +10,6 @@
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use alloc::string::String;
 use axerrno::{ax_err, ax_err_type, AxError, AxResult};
 use axio::PollState;
 use axsync::Mutex;
@@ -21,7 +20,7 @@ use smoltcp::socket::udp::{self, BindError, SendError};
 use smoltcp::wire::{IpEndpoint, IpListenEndpoint};
 
 use super::addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT};
-use super::{route_dev, SocketSetWrapper, SOCKET_SET};
+use super::{SocketSetWrapper, SOCKET_SET};
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
@@ -186,7 +185,7 @@ impl UdpSocket {
             debug!("UDP socket {}: shutting down", self.handle);
             socket.close();
         });
-        SOCKET_SET.poll_interfaces(None);
+        SOCKET_SET.poll_interfaces();
         Ok(())
     }
 
@@ -196,14 +195,12 @@ impl UdpSocket {
             return Ok(PollState {
                 readable: false,
                 writable: false,
-                pollhup: false,
             });
         }
         SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
             Ok(PollState {
                 readable: socket.can_recv(),
                 writable: socket.can_send(),
-                pollhup: false,
             })
         })
     }
@@ -224,31 +221,24 @@ impl UdpSocket {
             self.bind(res)?;
         }
 
-        let mut addr = [0u8; 4];
-        addr.copy_from_slice(remote_endpoint.addr.as_bytes());
-        let iface_name = route_dev(addr);
-
-        self.block_on(
-            || {
-                SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-                    if socket.can_send() {
-                        socket
-                            .send_slice(buf, remote_endpoint)
-                            .map_err(|e| match e {
-                                SendError::BufferFull => AxError::WouldBlock,
-                                SendError::Unaddressable => {
-                                    ax_err_type!(ConnectionRefused, "socket send() failed")
-                                }
-                            })?;
-                        Ok(buf.len())
-                    } else {
-                        // tx buffer is full
-                        Err(AxError::WouldBlock)
-                    }
-                })
-            },
-            Some(iface_name),
-        )
+        self.block_on(|| {
+            SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
+                if socket.can_send() {
+                    socket
+                        .send_slice(buf, remote_endpoint)
+                        .map_err(|e| match e {
+                            SendError::BufferFull => AxError::WouldBlock,
+                            SendError::Unaddressable => {
+                                ax_err_type!(ConnectionRefused, "socket send() failed")
+                            }
+                        })?;
+                    Ok(buf.len())
+                } else {
+                    // tx buffer is full
+                    Err(AxError::WouldBlock)
+                }
+            })
+        })
     }
 
     fn recv_impl<F, T>(&self, mut op: F) -> AxResult<T>
@@ -259,35 +249,29 @@ impl UdpSocket {
             return ax_err!(NotConnected, "socket send() failed");
         }
 
-        self.block_on(
-            || {
-                SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-                    if socket.can_recv() {
-                        // data available
-                        op(socket)
-                    } else {
-                        // no more data
-                        Err(AxError::WouldBlock)
-                    }
-                })
-            },
-            None,
-        )
+        self.block_on(|| {
+            SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
+                if socket.can_recv() {
+                    // data available
+                    op(socket)
+                } else {
+                    // no more data
+                    Err(AxError::WouldBlock)
+                }
+            })
+        })
     }
 
-    fn block_on<F, T>(&self, mut f: F, iface: Option<String>) -> AxResult<T>
+    fn block_on<F, T>(&self, mut f: F) -> AxResult<T>
     where
         F: FnMut() -> AxResult<T>,
     {
         if self.is_nonblocking() {
-            let res = f();
-            SOCKET_SET.poll_interfaces(iface.clone());
-            res
+            f()
         } else {
             loop {
-                let res = f();
-                SOCKET_SET.poll_interfaces(iface.clone());
-                match res {
+                SOCKET_SET.poll_interfaces();
+                match f() {
                     Ok(t) => return Ok(t),
                     Err(AxError::WouldBlock) => ruxtask::yield_now(),
                     Err(e) => return Err(e),

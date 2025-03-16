@@ -56,8 +56,8 @@ pub unsafe fn sys_getrlimit(resource: c_int, rlimits: *mut ctypes::rlimit) -> c_
             },
             #[cfg(feature = "fd")]
             ctypes::RLIMIT_NOFILE => unsafe {
-                (*rlimits).rlim_cur = ruxtask::fs::RUX_FILE_LIMIT as _;
-                (*rlimits).rlim_max = ruxtask::fs::RUX_FILE_LIMIT as _;
+                (*rlimits).rlim_cur = ruxfdtable::RUX_FILE_LIMIT as _;
+                (*rlimits).rlim_max = ruxfdtable::RUX_FILE_LIMIT as _;
             },
             ctypes::RLIMIT_MEMLOCK => {}
             ctypes::RLIMIT_AS => {}
@@ -81,17 +81,9 @@ pub unsafe fn sys_setrlimit(resource: c_int, rlimits: *const ctypes::rlimit) -> 
     debug!("sys_setrlimit <= {} {:#x}", resource, rlimits as usize);
     syscall_body!(sys_setrlimit, {
         match resource as u32 {
-            ctypes::RLIMIT_FSIZE => {
-                warn!("[sys_setrlimit] set RLIMIT_FSIZE do nothing")
-            }
             ctypes::RLIMIT_DATA => {}
             ctypes::RLIMIT_STACK => {}
-            ctypes::RLIMIT_NOFILE => {
-                warn!("[sys_setrlimit] set RLIMIT_NOFILE do nothing")
-            }
-            ctypes::RLIMIT_NPROC => {
-                warn!("[sys_setrlimit] set RLIMIT_NPROC do nothing")
-            }
+            ctypes::RLIMIT_NOFILE => {}
             _ => return Err(LinuxError::EINVAL),
         }
         // Currently do not support set resources

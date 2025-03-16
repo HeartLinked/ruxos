@@ -7,13 +7,13 @@
  *   See the Mulan PSL v2 for more details.
  */
 
+use alloc::sync::Arc;
 use core::ffi::c_int;
 
-use axerrno::LinuxError;
-use ruxfdtable::{RuxStat, RuxTimeSpec};
-use ruxtask::current;
-pub use ruxtask::fs::{close_file_like, get_file_like, RUX_FILE_LIMIT};
+use axerrno::{LinuxError, LinuxResult};
+use ruxfdtable::{FileLike, RuxStat, RuxTimeSpec, FD_TABLE, RUX_FILE_LIMIT};
 
+use super::stdio::{stdin, stdout};
 use crate::ctypes;
 
 impl From<ctypes::timespec> for RuxTimeSpec {
@@ -124,6 +124,39 @@ impl From<RuxStat> for ctypes::stat {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref MUST_EXEC: usize  = {
+        FD_TABLE.write().add_at(0, Arc::new(stdin()) as _).unwrap(); // stdin
+        FD_TABLE.write().add_at(1, Arc::new(stdout()) as _).unwrap(); // stdout
+        FD_TABLE.write().add_at(2, Arc::new(stdout()) as _).unwrap(); // stderr
+        0
+    };
+}
+
+pub fn get_file_like(fd: c_int) -> LinuxResult<Arc<dyn FileLike>> {
+    let _exec = *MUST_EXEC;
+    FD_TABLE
+        .read()
+        .get(fd as usize)
+        .cloned()
+        .ok_or(LinuxError::EBADF)
+}
+
+pub fn add_file_like(f: Arc<dyn FileLike>) -> LinuxResult<c_int> {
+    let _exec = *MUST_EXEC;
+    Ok(FD_TABLE.write().add(f).ok_or(LinuxError::EMFILE)? as c_int)
+}
+
+pub fn close_file_like(fd: c_int) -> LinuxResult {
+    let _exec = *MUST_EXEC;
+    let f = FD_TABLE
+        .write()
+        .remove(fd as usize)
+        .ok_or(LinuxError::EBADF)?;
+    drop(f);
+    Ok(())
+}
+
 /// Close a file by `fd`.
 pub fn sys_close(fd: c_int) -> c_int {
     debug!("sys_close <= {}", fd);
@@ -133,40 +166,42 @@ pub fn sys_close(fd: c_int) -> c_int {
     syscall_body!(sys_close, close_file_like(fd).map(|_| 0))
 }
 
+fn dup_fd(old_fd: c_int) -> LinuxResult<c_int> {
+    let f = get_file_like(old_fd)?;
+    let new_fd = add_file_like(f)?;
+    Ok(new_fd)
+}
+
 /// Duplicate a file descriptor.
 pub fn sys_dup(old_fd: c_int) -> c_int {
     debug!("sys_dup <= {}", old_fd);
-    syscall_body!(sys_dup, {
-        let binding_task = current();
-        let mut binding_fs = binding_task.fs.lock();
-        let new_fd = binding_fs.as_mut().unwrap().fd_table.dup(old_fd as _)?;
-        Ok(new_fd as c_int)
-    })
+    syscall_body!(sys_dup, dup_fd(old_fd))
 }
 
 /// Duplicate a file descriptor, but it uses the file descriptor number specified in `new_fd`.
 ///
-/// The close-on-exec flag for the duplicate descriptor is off.
+/// TODO: `dup2` should forcibly close new_fd if it is already opened.
 pub fn sys_dup2(old_fd: c_int, new_fd: c_int) -> c_int {
     debug!("sys_dup2 <= old_fd: {}, new_fd: {}", old_fd, new_fd);
     syscall_body!(sys_dup2, {
         if old_fd == new_fd {
-            // check if `oldfd` isn't an open file descriptor. If it not, return `EBADF`
-            get_file_like(old_fd as _)?;
-            return Ok(new_fd);
+            let r = sys_fcntl(old_fd, ctypes::F_GETFD as _, 0);
+            if r >= 0 {
+                return Ok(old_fd);
+            } else {
+                return Ok(r);
+            }
         }
         if new_fd as usize >= RUX_FILE_LIMIT {
             return Err(LinuxError::EBADF);
         }
+        close_file_like(new_fd)?;
 
-        // The steps of closing and reusing the file descriptor newfd are performed atomically.
-        current()
-            .fs
-            .lock()
-            .as_mut()
-            .unwrap()
-            .fd_table
-            .dup3(old_fd as _, new_fd as _, false)?;
+        let f = get_file_like(old_fd)?;
+        FD_TABLE
+            .write()
+            .add_at(new_fd as usize, f)
+            .ok_or(LinuxError::EMFILE)?;
 
         Ok(new_fd)
     })
@@ -183,15 +218,14 @@ pub fn sys_dup3(old_fd: c_int, new_fd: c_int, flags: c_int) -> c_int {
         if old_fd == new_fd {
             return Err(LinuxError::EINVAL);
         }
-        let cloexec = (flags as u32 & ctypes::O_CLOEXEC) != 0;
-        let binding_task = current();
-        let mut binding_fs = binding_task.fs.lock();
-        binding_fs
-            .as_mut()
-            .unwrap()
-            .fd_table
-            .dup3(old_fd as _, new_fd as _, cloexec)?;
-
+        sys_dup2(old_fd, new_fd);
+        if flags as u32 & ctypes::O_CLOEXEC != 0 {
+            sys_fcntl(
+                new_fd,
+                ctypes::F_SETFD as c_int,
+                ctypes::FD_CLOEXEC as usize,
+            );
+        }
         Ok(new_fd)
     })
 }
@@ -203,39 +237,10 @@ pub fn sys_fcntl(fd: c_int, cmd: c_int, arg: usize) -> c_int {
     debug!("sys_fcntl <= fd: {} cmd: {} arg: {}", fd, cmd, arg);
     syscall_body!(sys_fcntl, {
         match cmd as u32 {
-            ctypes::F_DUPFD => {
-                let new_fd = current()
-                    .fs
-                    .lock()
-                    .as_mut()
-                    .unwrap()
-                    .fd_table
-                    .dup_with_low_bound(fd as _, arg as _, false)?;
-                Ok(new_fd as _)
-            }
-            ctypes::F_GETFD => {
-                let binding_task = current();
-                let mut binding_fs = binding_task.fs.lock();
-                let fd_table = &mut binding_fs.as_mut().unwrap().fd_table;
-                if fd_table.get(fd as _).is_none() {
-                    return Err(LinuxError::EBADF);
-                }
-                let cloexec = if fd_table.get_cloexec(fd as _) {
-                    ctypes::FD_CLOEXEC
-                } else {
-                    0
-                };
-                Ok(cloexec as _)
-            }
+            ctypes::F_DUPFD => dup_fd(fd),
             ctypes::F_DUPFD_CLOEXEC => {
-                let new_fd = current()
-                    .fs
-                    .lock()
-                    .as_mut()
-                    .unwrap()
-                    .fd_table
-                    .dup_with_low_bound(fd as _, arg as _, true)?;
-                Ok(new_fd as _)
+                // TODO: Change fd flags
+                dup_fd(fd)
             }
             ctypes::F_SETFL => {
                 if fd == 0 || fd == 1 || fd == 2 {
@@ -259,14 +264,14 @@ pub fn sys_fcntl(fd: c_int, cmd: c_int, arg: usize) -> c_int {
                 Ok(flags as c_int)
             }
             ctypes::F_SETFD => {
-                let cloexec = (arg as u32 & ctypes::FD_CLOEXEC) == 1;
-                let binding_task = current();
-                let mut binding_fs = binding_task.fs.lock();
-                let fd_table = &mut binding_fs.as_mut().unwrap().fd_table;
-                if fd_table.get(fd as _).is_none() {
-                    return Err(LinuxError::EBADF);
+                if arg == 0 || arg == 1 || arg == 2 {
+                    return Ok(0);
                 }
-                fd_table.set_cloexec(fd as _, cloexec);
+                FD_TABLE
+                    .write()
+                    .add_at(arg, get_file_like(fd)?)
+                    .ok_or(LinuxError::EMFILE)?;
+                let _ = close_file_like(fd);
                 Ok(0)
             }
             _ => {

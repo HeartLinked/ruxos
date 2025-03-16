@@ -3,9 +3,14 @@ use core::{
     str::FromStr,
 };
 
-use lwip_rust::bindings::ip_addr_t;
+use lwip_rust::bindings::{
+    ip4_addr_t, ip_addr_t, lwip_ip_addr_type_IPADDR_TYPE_V4, lwip_ip_addr_type_IPADDR_TYPE_V6,
+};
 
-use core::net::{Ipv4Addr as CoreIpv4Addr, SocketAddr as CoreSocketAddr, SocketAddrV4};
+use core::net::{
+    Ipv4Addr as CoreIpv4Addr, Ipv6Addr as CoreIpv6Addr, SocketAddr as CoreSocketAddr, SocketAddrV4,
+    SocketAddrV6,
+};
 
 /// Mac Address
 #[derive(Clone, Copy, Debug, Default)]
@@ -68,7 +73,7 @@ impl IpAddr {
     /// Get the IP Address as a byte array
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            IpAddr::Ipv4(Ipv4Addr(addr)) => &addr[..],
+            IpAddr::Ipv4(Ipv4Addr(addr)) => unsafe { &addr[..] },
             _ => panic!("IPv6 not supported"),
         }
     }
@@ -115,7 +120,7 @@ impl From<IpAddr> for ip_addr_t {
 impl From<ip_addr_t> for IpAddr {
     #[allow(non_upper_case_globals)]
     fn from(addr: ip_addr_t) -> IpAddr {
-        IpAddr::Ipv4(Ipv4Addr(addr.addr.to_be_bytes()))
+        IpAddr::Ipv4(Ipv4Addr(unsafe { addr.addr.to_be_bytes() }))
     }
 }
 

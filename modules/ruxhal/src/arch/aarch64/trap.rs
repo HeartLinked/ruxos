@@ -106,15 +106,9 @@ fn handle_sync_exception(tf: &mut TrapFrame) {
                         PageFaultCause::INSTRUCTION // = instruction fetch
                     }
                 };
-                let is_mapped = crate::trap::handle_page_fault(vaddr, cause);
-
-                if is_mapped {
+                if crate::trap::handle_page_fault(vaddr, cause) {
                     return;
                 }
-                error!(
-                    "Page fault @ {:#x}, cause={:?}, is_mapped={}",
-                    tf.elr, cause, is_mapped
-                );
             }
             panic!(
                 "EL1 Page Fault @ {:#x}, FAR={:#x}, ISS={:#x}:\n{:#x?}",
@@ -133,10 +127,6 @@ fn handle_sync_exception(tf: &mut TrapFrame) {
                 esr.read(ESR_EL1::ISS),
             );
         }
-    }
-    #[cfg(feature = "signal")]
-    {
-        crate::trap::handle_signal();
     }
 }
 

@@ -7,148 +7,92 @@
  *   See the Mulan PSL v2 for more details.
  */
 
-//! High-level filesystem manipulation operations.
-//!
-//! Provided for `arceos_api` module and `axstd` user lib.
+//! [`std::fs`]-like high-level filesystem manipulation operations.
 
 mod dir;
 mod file;
 
+pub use self::dir::{DirBuilder, DirEntry, ReadDir};
+pub use self::file::{File, FileType, Metadata, OpenOptions, Permissions};
+
 use alloc::{string::String, vec::Vec};
-use axerrno::ax_err;
-use axerrno::AxError;
-use axfs_vfs::{AbsPath, VfsError};
 use axio::{self as io, prelude::*};
 
-use crate::fops;
+/// Returns an iterator over the entries within a directory.
+pub fn read_dir(path: &str) -> io::Result<ReadDir> {
+    ReadDir::new(path)
+}
 
-// Export high-level directory-related types.
-pub use dir::{DirBuilder, DirEntry, Directory};
+/// Returns the canonical, absolute form of a path with all intermediate
+/// components normalized.
+pub fn canonicalize(path: &str) -> io::Result<String> {
+    crate::root::absolute_path(path)
+}
 
-// Export high-level file-related types.
-pub use file::{File, FileAttr, FilePerm, FileType, OpenOptions};
-
-/// Returns the current working directory as a [`AbsPath`].
-pub fn current_dir() -> io::Result<AbsPath<'static>> {
-    Ok(fops::current_dir().unwrap())
+/// Returns the current working directory as a [`String`].
+pub fn current_dir() -> io::Result<String> {
+    crate::root::current_dir()
 }
 
 /// Changes the current working directory to the specified path.
-pub fn set_current_dir(path: AbsPath<'static>) -> io::Result<()> {
-    fops::set_current_dir(path)
-}
-
-/// Return the canonicalized and absolute path of the specified path.
-pub fn absolute_path(path: &str) -> io::Result<AbsPath<'static>> {
-    fops::absolute_path(path)
-}
-
-/// Get the attibutes of a file or directory.
-pub fn get_attr(path: &AbsPath) -> io::Result<FileAttr> {
-    fops::lookup(path)?.get_attr()
+pub fn set_current_dir(path: &str) -> io::Result<()> {
+    crate::root::set_current_dir(path)
 }
 
 /// Read the entire contents of a file into a bytes vector.
-pub fn read(path: &AbsPath) -> io::Result<Vec<u8>> {
+pub fn read(path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(path)?;
-    let size = file.get_attr().map(|m| m.size()).unwrap_or(0);
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mut bytes = Vec::with_capacity(size as usize);
     file.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
 
 /// Read the entire contents of a file into a string.
-pub fn read_to_string(path: &AbsPath) -> io::Result<String> {
+pub fn read_to_string(path: &str) -> io::Result<String> {
     let mut file = File::open(path)?;
-    let size = file.get_attr().map(|m| m.size()).unwrap_or(0);
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mut string = String::with_capacity(size as usize);
     file.read_to_string(&mut string)?;
     Ok(string)
 }
 
 /// Write a slice as the entire contents of a file.
-pub fn write<C: AsRef<[u8]>>(path: &AbsPath, contents: C) -> io::Result<()> {
+pub fn write<C: AsRef<[u8]>>(path: &str, contents: C) -> io::Result<()> {
     File::create(path)?.write_all(contents.as_ref())
 }
 
+/// Given a path, query the file system to get information about a file,
+/// directory, etc.
+pub fn metadata(path: &str) -> io::Result<Metadata> {
+    File::open(path)?.metadata()
+}
+
 /// Creates a new, empty directory at the provided path.
-pub fn create_dir(path: &AbsPath) -> io::Result<()> {
+pub fn create_dir(path: &str) -> io::Result<()> {
     DirBuilder::new().create(path)
 }
 
 /// Recursively create a directory and all of its parent components if they
 /// are missing.
-pub fn create_dir_all(path: &AbsPath) -> io::Result<()> {
+pub fn create_dir_all(path: &str) -> io::Result<()> {
     DirBuilder::new().recursive(true).create(path)
 }
 
 /// Removes an empty directory.
-pub fn remove_dir(path: &AbsPath) -> io::Result<()> {
-    let node = fops::lookup(path)?;
-    let attr = node.get_attr()?;
-    if !attr.is_dir() {
-        return ax_err!(NotADirectory);
-    }
-    if fops::is_mount_point(path) {
-        return ax_err!(PermissionDenied);
-    }
-    if !attr.perm().owner_writable() {
-        return ax_err!(PermissionDenied);
-    }
-    if !node.is_empty()? {
-        return ax_err!(DirectoryNotEmpty);
-    }
-    fops::remove_dir(path)
-}
-
-/// Creates a new file at the provided path.
-/// We only support creating regular files and FIFOs.
-///
-/// TODO: support permissions for sys_mknod and create_node.
-pub fn create_node(
-    path: &AbsPath,
-    file_type: FileType,
-    // perm: Permissions,
-) -> io::Result<()> {
-    match file_type {
-        FileType::File => {
-            fops::create_file(&path)?;
-            Ok(())
-        }
-        FileType::Fifo => {
-            if path.starts_with("/tmp/") {
-                fops::create_fifo(&path)?;
-                Ok(())
-            } else {
-                return Err(AxError::Unsupported);
-            }
-        }
-        _ => return Err(AxError::Unsupported),
-    }
+pub fn remove_dir(path: &str) -> io::Result<()> {
+    crate::root::remove_dir(None, path)
 }
 
 /// Removes a file from the filesystem.
-pub fn remove_file(path: &AbsPath) -> io::Result<()> {
-    let node = fops::lookup(path)?;
-    let attr = node.get_attr()?;
-    if attr.is_dir() {
-        return ax_err!(IsADirectory);
-    }
-    if !attr.perm().owner_writable() {
-        return ax_err!(PermissionDenied);
-    }
-    fops::remove_file(path)
+pub fn remove_file(path: &str) -> io::Result<()> {
+    crate::root::remove_file(None, path)
 }
 
 /// Rename a file or directory to a new name.
 /// Delete the original file if `old` already exists.
 ///
 /// This only works then the new path is in the same mounted fs.
-pub fn rename(old: &AbsPath, new: &AbsPath) -> io::Result<()> {
-    fops::lookup(old)?;
-    match fops::lookup(new) {
-        Ok(_) => ax_err!(AlreadyExists),
-        Err(VfsError::NotFound) => fops::rename(old, new),
-        Err(e) => ax_err!(e),
-    }
+pub fn rename(old: &str, new: &str) -> io::Result<()> {
+    crate::root::rename(old, new)
 }

@@ -11,7 +11,6 @@ extern crate alloc;
 
 use crate::{DevError, DevResult, NetBufPtr};
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
-use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use spin::Mutex;
 
@@ -115,13 +114,11 @@ impl NetBuf {
     pub fn into_buf_ptr(mut self: Box<Self>) -> NetBufPtr {
         let buf_ptr = self.packet_mut().as_mut_ptr();
         let len = self.packet_len;
-        let raw_ptr = NonNull::new(&mut *self as *mut Self as *mut u8).unwrap();
-        let buf_ptr = NonNull::new(buf_ptr).unwrap();
-        let drop_fn = Box::new(move || {
-            self.pool.dealloc(self.pool_offset);
-            let _ = ManuallyDrop::new(self);
-        });
-        NetBufPtr::new(raw_ptr, buf_ptr, drop_fn, len)
+        NetBufPtr::new(
+            NonNull::new(Box::into_raw(self) as *mut u8).unwrap(),
+            NonNull::new(buf_ptr).unwrap(),
+            len,
+        )
     }
 
     /// Restore [`NetBuf`] struct from a raw pointer.

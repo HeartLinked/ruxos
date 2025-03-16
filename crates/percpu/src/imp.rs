@@ -8,9 +8,8 @@
  */
 
 const fn align_up(val: usize) -> usize {
-    // should be the same as align_size in percpu.
-    const ALIGN_SIZE: usize = 64;
-    (val + ALIGN_SIZE - 1) & !(ALIGN_SIZE - 1)
+    const PAGE_SIZE: usize = 0x1000;
+    (val + PAGE_SIZE - 1) & !(PAGE_SIZE - 1)
 }
 
 #[cfg(not(target_os = "none"))]

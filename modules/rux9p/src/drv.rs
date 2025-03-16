@@ -780,7 +780,7 @@ impl _9PReq {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct _9PQid {
     ftype: u8,
     version: u32,
@@ -794,9 +794,6 @@ impl _9PQid {
             version: lbytes2u64(&bytes[1..5]) as u32,
             path: lbytes2u64(&bytes[5..13]),
         }
-    }
-    pub fn path(&self) -> u64 {
-        self.path
     }
 }
 
@@ -905,10 +902,6 @@ impl FileAttr {
                 0o10
             }
         }
-    }
-
-    pub fn get_qid(&self) -> _9PQid {
-        self.qid
     }
 
     pub fn get_perm(&self) -> u32 {

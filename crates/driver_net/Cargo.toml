@@ -11,7 +11,6 @@ documentation = "https://rcore-os.github.io/arceos/driver_net/index.html"
 
 [features]
 default = []
-loopback = []
 ixgbe = ["dep:ixgbe-driver"]
 
 [dependencies]

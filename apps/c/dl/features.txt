@@ -9,4 +9,3 @@ poll
 rtc
 signal
 virtio-9p
-fp_simd

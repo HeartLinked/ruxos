@@ -51,7 +51,6 @@ FEATURES ?=
 APP_FEATURES ?=
 
 # QEMU options
-CONSOLE ?= n
 BLK ?= n
 NET ?= n
 GRAPHIC ?= n
@@ -60,7 +59,6 @@ BUS ?= mmio
 RISCV_BIOS ?= default
 
 DISK_IMG ?= disk.img
-FS ?= fat32
 QEMU_LOG ?= n
 NET_DUMP ?= n
 NET_DEV ?= user
@@ -80,7 +78,7 @@ ARGS ?=
 ENVS ?= 
 
 # Libc options
-MUSL ?= y
+MUSL ?= n
 
 # App type
 ifeq ($(wildcard $(APP)),)
@@ -185,7 +183,6 @@ all: build
 
 # prebuild option to be overriden in `$(PREBUILD)`
 define run_prebuild
-	git submodule update --init
 endef
 
 # prebuild makefile might override some variables by their own
@@ -237,7 +234,6 @@ debug_no_attach: build
 	$(call run_qemu_debug)
 
 clippy:
-	$(call run_prebuild)
 ifeq ($(origin ARCH), command line)
 	$(call cargo_clippy,--target $(TARGET))
 else
@@ -253,6 +249,9 @@ doc_check_missing:
 fmt:
 	cargo fmt --all
 
+fmt_c:
+	@clang-format --style=file -i $(shell find ulib/ruxlibc -iname '*.c' -o -iname '*.h')
+
 test:
 	$(call app_test)
 
@@ -265,12 +264,8 @@ unittest_no_fail_fast:
 disk_img:
 ifneq ($(wildcard $(DISK_IMG)),)
 	@printf "$(YELLOW_C)warning$(END_C): disk image \"$(DISK_IMG)\" already exists!\n"
-else ifeq ($(FS), fat32)
-	$(call make_disk_image,fat32,$(DISK_IMG))
-else ifeq ($(FS), ext4)
-	$(call make_disk_image,ext4,$(DISK_IMG))
 else
-	$(error "FS" must be one of "fat32" or "ext4")
+	$(call make_disk_image,fat32,$(DISK_IMG))
 endif
 
 clean: clean_c clean_musl
@@ -278,11 +273,12 @@ clean: clean_c clean_musl
 	cargo clean
 
 clean_c::
+	rm -rf ulib/ruxlibc/build_*
 	rm -rf $(app-objs)
 
 clean_musl:
 	rm -rf ulib/ruxmusl/build_*
 	rm -rf ulib/ruxmusl/install
 
-.PHONY: all build disasm run justrun debug clippy fmt fmt_c test test_no_fail_fast clean \
+.PHONY: all build disasm run justrun debug clippy fmt fmt_c test test_no_fail_fast clean clean_c\
         clean_musl doc disk_image debug_no_attach prebuild _force

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 fn main() {
     println!("cargo:rustc-link-lib=lwip");
     println!("cargo:rerun-if-changed=custom");
@@ -26,8 +28,9 @@ fn generate_lwip_bindings() {
         .generate()
         .expect("Unable to generate bindings");
 
+    let out_path = PathBuf::from("src");
     bindings
-        .write_to_file("src/bindings.rs")
+        .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 }
 

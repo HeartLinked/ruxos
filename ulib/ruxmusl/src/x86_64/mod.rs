@@ -192,13 +192,7 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
                 ruxos_posix_api::sys_socket(args[0] as c_int, args[1] as c_int, args[2] as c_int)
                     as _
             }
-            #[cfg(feature = "net")]
-            SyscallId::SOCKETPAIR => ruxos_posix_api::sys_socketpair(
-                args[0] as _,
-                args[1] as _,
-                args[2] as _,
-                core::slice::from_raw_parts_mut(args[3] as *mut c_int, 2),
-            ) as _,
+
             #[cfg(feature = "net")]
             SyscallId::CONNECT => ruxos_posix_api::sys_connect(
                 args[0] as c_int,
@@ -278,15 +272,6 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
                 args[2] as c_int,
                 args[3] as *const c_void,
                 args[4] as ctypes::socklen_t,
-            ) as _,
-
-            #[cfg(feature = "net")]
-            SyscallId::GETSOCKOPT => ruxos_posix_api::sys_getsockopt(
-                args[0] as c_int,
-                args[1] as c_int,
-                args[2] as c_int,
-                args[3] as *mut c_void,
-                args[4] as *mut ctypes::socklen_t,
             ) as _,
 
             #[cfg(feature = "multitask")]
@@ -438,7 +423,7 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
             ) as _,
 
             #[cfg(feature = "epoll")]
-            SyscallId::EPOLL_CREATE => ruxos_posix_api::sys_epoll_create1(args[0] as c_int) as _,
+            SyscallId::EPOLL_CREATE => ruxos_posix_api::sys_epoll_create(args[0] as c_int) as _,
 
             #[cfg(feature = "fs")]
             SyscallId::GETDENTS64 => ruxos_posix_api::sys_getdents64(
@@ -460,13 +445,6 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
                 args[1] as *mut ctypes::timespec,
             ) as _,
 
-            SyscallId::CLOCK_NANOSLEEP => ruxos_posix_api::sys_clock_nanosleep(
-                args[0] as ctypes::clockid_t,
-                args[1] as c_int,
-                args[2] as *const ctypes::timespec,
-                args[3] as *mut ctypes::timespec,
-            ) as _,
-
             #[cfg(feature = "epoll")]
             SyscallId::EPOLL_WAIT => ruxos_posix_api::sys_epoll_wait(
                 args[0] as c_int,
@@ -485,7 +463,7 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
 
             #[cfg(feature = "fs")]
             SyscallId::OPENAT => ruxos_posix_api::sys_openat(
-                args[0] as c_int,
+                args[0],
                 args[1] as *const core::ffi::c_char,
                 args[2] as c_int,
                 args[3] as ctypes::mode_t,
@@ -567,7 +545,7 @@ pub fn syscall(syscall_id: SyscallId, args: [usize; 6]) -> isize {
             ) as _,
 
             #[cfg(feature = "epoll")]
-            SyscallId::EPOLL_CREATE1 => ruxos_posix_api::sys_epoll_create1(args[0] as c_int) as _,
+            SyscallId::EPOLL_CREATE1 => ruxos_posix_api::sys_epoll_create(args[0] as c_int) as _,
 
             #[cfg(feature = "fd")]
             SyscallId::DUP3 => {

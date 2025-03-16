@@ -7,17 +7,16 @@
  *   See the Mulan PSL v2 for more details.
  */
 
-use alloc::sync::{Arc, Weak};
+use alloc::sync::Arc;
 use core::ffi::c_int;
-use ruxfs::{fops, AbsPath};
 
 use axerrno::{LinuxError, LinuxResult};
 use axio::PollState;
 use axsync::Mutex;
 use ruxfdtable::{FileLike, RuxStat};
 
+use super::fd_ops::{add_file_like, close_file_like};
 use crate::{ctypes, sys_fcntl};
-use ruxtask::fs::{add_file_like, close_file_like};
 
 #[derive(Copy, Clone, PartialEq)]
 enum RingBufferStatus {
@@ -26,7 +25,7 @@ enum RingBufferStatus {
     Normal,
 }
 
-const RING_BUFFER_SIZE: usize = ruxconfig::PIPE_BUFFER_SIZE;
+const RING_BUFFER_SIZE: usize = 256;
 
 pub struct PipeRingBuffer {
     arr: [u8; RING_BUFFER_SIZE],
@@ -88,8 +87,6 @@ impl PipeRingBuffer {
 pub struct Pipe {
     readable: bool,
     buffer: Arc<Mutex<PipeRingBuffer>>,
-    // to find the write end when the read end is closed
-    _write_end_closed: Option<Weak<Mutex<PipeRingBuffer>>>,
 }
 
 impl Pipe {
@@ -98,12 +95,10 @@ impl Pipe {
         let read_end = Pipe {
             readable: true,
             buffer: buffer.clone(),
-            _write_end_closed: None,
         };
         let write_end = Pipe {
             readable: false,
-            buffer: buffer.clone(),
-            _write_end_closed: Some(Arc::downgrade(&buffer)),
+            buffer,
         };
         (read_end, write_end)
     }
@@ -117,16 +112,11 @@ impl Pipe {
     }
 
     pub fn write_end_close(&self) -> bool {
-        let write_end_count = Arc::weak_count(&self.buffer);
-        write_end_count == 0
+        Arc::strong_count(&self.buffer) == 1
     }
 }
 
 impl FileLike for Pipe {
-    fn path(&self) -> AbsPath {
-        AbsPath::new("/dev/pipe")
-    }
-
     fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
         if !self.readable() {
             return Err(LinuxError::EPERM);
@@ -218,7 +208,6 @@ impl FileLike for Pipe {
         Ok(PollState {
             readable: self.readable() && buf.available_read() > 0,
             writable: self.writable() && buf.available_write() > 0,
-            pollhup: self.write_end_close(),
         })
     }
 
@@ -238,16 +227,14 @@ pub fn sys_pipe(fds: &mut [c_int]) -> c_int {
         }
 
         let (read_end, write_end) = Pipe::new();
-        let read_fd = add_file_like(Arc::new(read_end), fops::OpenOptions::new())?;
-        let write_fd =
-            add_file_like(Arc::new(write_end), fops::OpenOptions::new()).inspect_err(|_| {
-                close_file_like(read_fd).ok();
-            })?;
+        let read_fd = add_file_like(Arc::new(read_end))?;
+        let write_fd = add_file_like(Arc::new(write_end)).inspect_err(|_| {
+            close_file_like(read_fd).ok();
+        })?;
 
         fds[0] = read_fd as c_int;
         fds[1] = write_fd as c_int;
 
-        debug!("[sys_pipe] create pipe with read fd {read_fd} and write fd {write_fd}");
         Ok(0)
     })
 }
