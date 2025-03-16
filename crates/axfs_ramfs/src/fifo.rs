@@ -183,6 +183,7 @@ impl VfsNodeOps for FifoNode {
         self.fifo.readers.load(Ordering::SeqCst) > 0
     }
 
+    // when open a fifo node, we need to check mode and decide whether to block
     fn open_fifo(&self, read: bool, write: bool, non_blocking: bool) -> VfsResult {
         debug!("open a fifo node");
         if read {
