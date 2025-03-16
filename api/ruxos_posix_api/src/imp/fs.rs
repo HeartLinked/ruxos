@@ -555,6 +555,7 @@ pub fn sys_unlinkat(fd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
     })
 }
 
+/// Creates a new, empty file at the provided path.
 pub fn sys_mknodat(
     fd: c_int,
     pathname: *const c_char,

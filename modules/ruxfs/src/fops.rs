@@ -142,7 +142,9 @@ impl Drop for File {
                     );
                     self.node.access_unchecked().release_fifo(read, write).ok();
                 }
-                _ => unimplemented!(),
+                _ => {
+                    self.node.access_unchecked().release().ok();
+                }
             }
         }
     }
@@ -397,6 +399,7 @@ pub fn open_dir(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult
     ))
 }
 
+/// Open a node as a fifo file, with permission checked.
 pub fn open_fifo(path: &AbsPath, node: VfsNodeRef, opt: &OpenOptions) -> AxResult<File> {
     let attr = node.get_attr()?;
     if !attr.is_fifo() {
@@ -426,6 +429,9 @@ pub fn create_file(path: &AbsPath) -> AxResult {
     root_dir().create(&path.to_rel(), VfsNodeType::File)
 }
 
+/// Create a fifo file given an absolute path.
+///
+/// This function will not check if the file exists, check it with [`lookup`] first.
 pub fn create_fifo(path: &AbsPath) -> AxResult {
     root_dir().create(&path.to_rel(), VfsNodeType::Fifo)
 }
