@@ -17,6 +17,8 @@ pub struct FileSystemInfo;
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct VfsNodeAttr {
+    /// Inode number.
+    ino: u64,
     /// File permission mode.
     mode: VfsNodePerm,
     /// File type.
@@ -74,7 +76,14 @@ pub enum VfsNodeType {
     Socket = 0o14,
 }
 
+impl Default for VfsNodeType {
+    fn default() -> Self {
+        Self::File
+    }
+}
+
 /// Directory entry.
+#[derive(Clone)]
 pub struct VfsDirEntry {
     d_type: VfsNodeType,
     d_name: [u8; 63],
@@ -94,6 +103,13 @@ impl VfsNodePerm {
     /// group/others can read and execute).
     pub const fn default_dir() -> Self {
         Self::from_bits_truncate(0o755)
+    }
+
+    /// Returns the default permission for a socket.
+    ///
+    /// The default permission is `0o777` (owner/group/others can read, write and execute).
+    pub const fn default_socket() -> Self {
+        Self::from_bits_truncate(0o777)
     }
 
     /// Returns the underlying raw `st_mode` bits that contain the standard
@@ -206,10 +222,11 @@ impl VfsNodeType {
 }
 
 impl VfsNodeAttr {
-    /// Creates a new `VfsNodeAttr` with the given permission mode, type, size
+    /// Creates a new `VfsNodeAttr` with the given inode number, permission mode, type, size
     /// and number of blocks.
-    pub const fn new(mode: VfsNodePerm, ty: VfsNodeType, size: u64, blocks: u64) -> Self {
+    pub const fn new(ino: u64, mode: VfsNodePerm, ty: VfsNodeType, size: u64, blocks: u64) -> Self {
         Self {
+            ino,
             mode,
             ty,
             size,
@@ -218,8 +235,9 @@ impl VfsNodeAttr {
     }
 
     /// Creates a new `VfsNodeAttr` for a file, with the default file permission.
-    pub const fn new_file(size: u64, blocks: u64) -> Self {
+    pub const fn new_file(ino: u64, size: u64, blocks: u64) -> Self {
         Self {
+            ino,
             mode: VfsNodePerm::default_file(),
             ty: VfsNodeType::File,
             size,
@@ -227,10 +245,33 @@ impl VfsNodeAttr {
         }
     }
 
+    /// Creates a new `VfsNodeAttr` for a socket, with the default file permission.
+    pub const fn new_socket(ino: u64, size: u64, blocks: u64) -> Self {
+        Self {
+            ino,
+            mode: VfsNodePerm::default_file(),
+            ty: VfsNodeType::Socket,
+            size,
+            blocks,
+        }
+    }
+
+    /// Creates a new `VfsNodeAttr` for a fifo, with the default file permission.
+    pub const fn new_fifo(ino: u64, size: u64, blocks: u64) -> Self {
+        Self {
+            ino,
+            mode: VfsNodePerm::default_file(),
+            ty: VfsNodeType::Fifo,
+            size,
+            blocks,
+        }
+    }
+
     /// Creates a new `VfsNodeAttr` for a directory, with the default directory
     /// permission.
-    pub const fn new_dir(size: u64, blocks: u64) -> Self {
+    pub const fn new_dir(ino: u64, size: u64, blocks: u64) -> Self {
         Self {
+            ino,
             mode: VfsNodePerm::default_dir(),
             ty: VfsNodeType::Dir,
             size,
@@ -238,6 +279,10 @@ impl VfsNodeAttr {
         }
     }
 
+    /// Returns the inode number of the node.
+    pub const fn ino(&self) -> u64 {
+        self.ino
+    }
     /// Returns the size of the node.
     pub const fn size(&self) -> u64 {
         self.size
@@ -271,6 +316,16 @@ impl VfsNodeAttr {
     /// Whether the node is a directory.
     pub const fn is_dir(&self) -> bool {
         self.ty.is_dir()
+    }
+
+    /// Whether the node is a fifo.
+    pub const fn is_fifo(&self) -> bool {
+        self.ty.is_fifo()
+    }
+
+    ///Whether the node is a socket.
+    pub const fn is_socket(&self) -> bool {
+        self.ty.is_socket()
     }
 }
 

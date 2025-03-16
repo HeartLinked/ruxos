@@ -17,6 +17,7 @@ use {
     axerrno::{AxError, LinuxError, LinuxResult},
     axio::PollState,
     core::sync::atomic::{AtomicBool, Ordering},
+    ruxfs::AbsPath,
 };
 
 struct StdinRaw;
@@ -130,6 +131,10 @@ pub fn stdout() -> Stdout {
 
 #[cfg(feature = "fd")]
 impl ruxfdtable::FileLike for Stdin {
+    fn path(&self) -> AbsPath {
+        AbsPath::new("/dev/stdin")
+    }
+
     fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
         match self.nonblocking.load(Ordering::Relaxed) {
             true => Ok(self.read_nonblocked(buf)?),
@@ -163,6 +168,7 @@ impl ruxfdtable::FileLike for Stdin {
         Ok(PollState {
             readable: true,
             writable: true,
+            pollhup: false,
         })
     }
 
@@ -174,6 +180,10 @@ impl ruxfdtable::FileLike for Stdin {
 
 #[cfg(feature = "fd")]
 impl ruxfdtable::FileLike for Stdout {
+    fn path(&self) -> AbsPath {
+        AbsPath::new("/dev/stdout")
+    }
+
     fn read(&self, _buf: &mut [u8]) -> LinuxResult<usize> {
         Err(LinuxError::EPERM)
     }
@@ -204,6 +214,7 @@ impl ruxfdtable::FileLike for Stdout {
         Ok(PollState {
             readable: true,
             writable: true,
+            pollhup: false,
         })
     }
 

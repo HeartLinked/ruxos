@@ -11,14 +11,15 @@
 #![no_std]
 extern crate alloc;
 use alloc::sync::Arc;
+use axfs_vfs::VfsNodeAttr;
 use core::marker::Send;
 use core::marker::Sync;
 
 use axerrno::LinuxResult;
+use axfs_vfs::AbsPath;
 use axio::PollState;
-use flatten_objects::FlattenObjects;
-use spin::RwLock;
 
+#[derive(Default)]
 ///Rust version for struct timespec in ctypes. Represents a high-resolution time specification.
 pub struct RuxTimeSpec {
     /// Whole seconds part of the timespec.
@@ -29,6 +30,7 @@ pub struct RuxTimeSpec {
 
 ///Rust version for struct stat in ctypes. Represents file status information.
 #[cfg(target_arch = "aarch64")]
+#[derive(Default)]
 pub struct RuxStat {
     /// Device identifier.
     pub st_dev: u64,
@@ -63,8 +65,10 @@ pub struct RuxStat {
     /// Unused space, reserved for future use.
     pub __unused: [core::ffi::c_uint; 2usize],
 }
+
 ///Rust version for struct stat in ctypes. Represents file status information.
 #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
+#[derive(Default)]
 pub struct RuxStat {
     /// Device identifier.
     pub st_dev: u64,
@@ -98,8 +102,76 @@ pub struct RuxStat {
     pub __unused: [core::ffi::c_long; 3usize],
 }
 
+#[cfg(target_arch = "aarch64")]
+impl From<VfsNodeAttr> for RuxStat {
+    fn from(attr: VfsNodeAttr) -> Self {
+        Self {
+            st_dev: 0,
+            st_ino: attr.ino(),
+            st_nlink: 1,
+            st_mode: ((attr.file_type() as u32) << 12) | attr.perm().bits() as u32,
+            st_uid: 1000,
+            st_gid: 1000,
+            st_rdev: 0,
+            __pad: 0,
+            st_size: attr.size() as _,
+            st_blksize: 512,
+            __pad2: 0,
+            st_blocks: attr.blocks() as _,
+            st_atime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_mtime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_ctime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            __unused: [0; 2],
+        }
+    }
+}
+
+#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
+impl From<VfsNodeAttr> for RuxStat {
+    fn from(attr: VfsNodeAttr) -> Self {
+        Self {
+            st_dev: 0,
+            st_ino: attr.ino(),
+            st_nlink: 1,
+            st_mode: ((attr.file_type() as u32) << 12) | attr.perm().bits() as u32,
+            st_uid: 1000,
+            st_gid: 1000,
+            __pad0: 0,
+            st_rdev: 0,
+            st_size: attr.size() as _,
+            st_blksize: 512,
+            st_blocks: attr.blocks() as _,
+            st_atime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_mtime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            st_ctime: RuxTimeSpec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            __unused: [0; 3],
+        }
+    }
+}
+
 /// Trait for file-like objects in a file descriptor table.
 pub trait FileLike: Send + Sync {
+    /// Get the absolute path of the file-like object.
+    fn path(&self) -> AbsPath;
+
     /// Reads data from the file-like object into the provided buffer.
     ///
     /// Returns the number of bytes read on success.
@@ -124,14 +196,4 @@ pub trait FileLike: Send + Sync {
 
     /// Sets or clears the non-blocking I/O mode for the file-like object.
     fn set_nonblocking(&self, nonblocking: bool) -> LinuxResult;
-}
-/// Maximum number of files per process
-pub const RUX_FILE_LIMIT: usize = 1024;
-
-lazy_static::lazy_static! {
-    /// Global file descriptor table protected by a read-write lock.
-    pub static ref FD_TABLE: RwLock<FlattenObjects<Arc<dyn FileLike>, RUX_FILE_LIMIT>> = {
-        let fd_table = FlattenObjects::new();
-        RwLock::new(fd_table)
-    };
 }
