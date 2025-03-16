@@ -168,14 +168,17 @@ impl VfsNodeOps for FifoNode {
         Ok(VfsNodeAttr::new_fifo(self.ino, 0, 0))
     }
 
+    // for fifo, offset is useless and ignored
     fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
         Ok(self.fifo.read(buf).unwrap_or(0))
     }
 
+    // for fifo, offset is useless and ignored
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
         Ok(self.fifo.write(buf).unwrap_or(0))
     }
 
+    // check if there are any readers
     fn fifo_has_readers(&self) -> bool {
         self.fifo.readers.load(Ordering::SeqCst) > 0
     }

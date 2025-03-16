@@ -31,7 +31,6 @@ pub fn sys_read(fd: c_int, buf: *mut c_void, count: usize) -> ctypes::ssize_t {
             Ok(get_file_like(fd as _)?.read(dst)? as ctypes::ssize_t)
         }
         #[cfg(not(feature = "fd"))]
-        // warn!("not feature fd");
         match fd {
             0 => Ok(super::stdio::stdin().read(dst)? as ctypes::ssize_t),
             1 | 2 => Err(LinuxError::EPERM),

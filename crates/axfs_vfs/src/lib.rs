@@ -58,7 +58,6 @@ use axerrno::{ax_err, AxError, AxResult};
 
 pub use self::path::{AbsPath, RelPath};
 pub use self::structs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodePerm, VfsNodeType};
-// use ruxfs::fops::OpenOptions;
 
 /// A wrapper of [`Arc<dyn VfsNodeOps>`].
 pub type VfsNodeRef = Arc<dyn VfsNodeOps>;
