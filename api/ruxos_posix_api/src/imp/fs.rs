@@ -58,18 +58,6 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
             "sys_openat <= fd {} {:?}, {:?}, {:#o}",
             fd, path, flags, mode
         );
-        let node = fops::lookup(&path);
-        if node.clone()?.get_attr()?.is_fifo() {
-            // process error return in non-blocking mode
-            // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
-            if flags.is_non_blocking() {
-                if !flags.readable() && flags.writable() {
-                    if !node?.fifo_has_readers() {
-                        return Err(LinuxError::ENXIO);
-                    }
-                }
-            }
-        }
         add_file_like(open_file_like(&path, flags)?, flags)
     })
 }
