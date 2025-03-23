@@ -7,6 +7,7 @@ use log::debug;
 use ringbuffer::RingBuffer;
 use spin::Mutex;
 
+/// A simple FIFO implementation.
 pub struct Fifo {
     buffer: Arc<Mutex<RingBuffer>>,
     readers: AtomicUsize,
@@ -14,6 +15,7 @@ pub struct Fifo {
 }
 
 impl Fifo {
+    // create a new fifo
     pub fn new() -> Self {
         Self {
             buffer: Arc::new(Mutex::new(RingBuffer::new(1024))),
@@ -22,6 +24,7 @@ impl Fifo {
         }
     }
 
+    // read data from fifo
     pub fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
         debug!("read data from fifo");
         loop {
@@ -42,6 +45,7 @@ impl Fifo {
         }
     }
 
+    // write data to fifo
     pub fn write(&self, buf: &[u8]) -> LinuxResult<usize> {
         debug!("write data to fifo");
         loop {
@@ -60,6 +64,7 @@ impl Fifo {
     }
 }
 
+/// A node representing a FIFO.
 pub struct FifoNode {
     ino: u64,
     fifo: Fifo,
@@ -94,6 +99,7 @@ impl VfsNodeOps for FifoNode {
         self.fifo.readers.load(Ordering::SeqCst) > 0
     }
 
+    // open a fifo node
     fn open_fifo(
         &self,
         read: bool,
@@ -123,6 +129,7 @@ impl VfsNodeOps for FifoNode {
         Ok(None)
     }
 
+    // release a fifo node
     fn release_fifo(&self, read: bool, write: bool) -> VfsResult {
         debug!("release a fifo node");
         if read {

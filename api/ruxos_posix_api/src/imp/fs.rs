@@ -70,7 +70,6 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
                 }
             }
         }
-
         add_file_like(open_file_like(&path, flags)?, flags)
     })
 }
