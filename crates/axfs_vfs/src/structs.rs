@@ -178,7 +178,6 @@ impl VfsNodePerm {
     pub const fn owner_executable(&self) -> bool {
         self.contains(Self::OWNER_EXEC)
     }
-
 }
 
 impl VfsNodeType {

@@ -102,6 +102,21 @@ pub trait VfsNodeOps: Send + Sync {
         Ok(None)
     }
 
+    /// Do something when the node is opened as a fifo.
+    fn open_fifo(
+        &self,
+        _read: bool,
+        _write: bool,
+        _non_blocking: bool,
+    ) -> VfsResult<Option<VfsNodeRef>> {
+        Ok(None)
+    }
+
+    /// Do something when the node is closed as a fifo.
+    fn release_fifo(&self, _read: bool, _write: bool) -> VfsResult {
+        Ok(())
+    }
+
     /// Do something when the node is closed.
     fn release(&self) -> VfsResult {
         Ok(())
@@ -245,16 +260,6 @@ pub trait VfsNodeOps: Send + Sync {
         }
         self.create(path, ty)?;
 
-        Ok(())
-    }
-
-    /// Do something when the node is opened as a fifo.
-    fn open_fifo(&self, _read: bool, _write: bool, _non_blocking: bool) -> VfsResult {
-        Ok(())
-    }
-
-    /// Do something when the node is closed as a fifo.
-    fn release_fifo(&self, _read: bool, _write: bool) -> VfsResult {
         Ok(())
     }
 

@@ -14,7 +14,7 @@
 //!
 //! The interface is designed with low coupling to avoid repetitive error handling.
 use alloc::{sync::Arc, vec::Vec};
-use axerrno::{LinuxError, AxError, AxResult};
+use axerrno::{AxError, AxResult};
 use axfs_vfs::{AbsPath, RelPath, VfsNodeOps, VfsNodeRef, VfsNodeType};
 use capability::Cap;
 use ruxfdtable::{FileLike, OpenFlags};
@@ -109,6 +109,13 @@ pub(crate) fn open_abspath(path: &AbsPath, flags: OpenFlags) -> AxResult<VfsNode
     if !Cap::from(attr.perm()).contains(Cap::from(flags)) {
         return Err(AxError::PermissionDenied);
     }
+    if node.get_attr()?.is_fifo() {
+        if let Some(new_node) =
+            node.open_fifo(flags.readable(), flags.writable(), flags.is_non_blocking())?
+        {
+            return Ok(new_node);
+        }
+    }
     if let Some(new_node) = node.open()? {
         return Ok(new_node);
     }
@@ -123,8 +130,6 @@ pub fn open_file_like(path: &AbsPath, flags: OpenFlags) -> AxResult<Arc<dyn File
     } else if node.get_attr()?.is_file() {
         Ok(Arc::new(File::new(path.to_owned(), node, flags)))
     } else if node.get_attr()?.is_fifo() {
-
-
         Ok(Arc::new(File::new(path.to_owned(), node, flags)))
     } else {
         Err(AxError::Unsupported)

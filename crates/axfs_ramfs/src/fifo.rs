@@ -1,8 +1,9 @@
 use alloc::sync::Arc;
 use axerrno::{LinuxError, LinuxResult};
+use axfs_vfs::VfsNodeRef;
 use axfs_vfs::{impl_vfs_non_dir_default, VfsNodeAttr, VfsNodeOps, VfsResult};
 use core::sync::atomic::{AtomicUsize, Ordering};
-use log::{debug, warn};
+use log::debug;
 use ringbuffer::RingBuffer;
 use spin::Mutex;
 
@@ -22,17 +23,14 @@ impl Fifo {
     }
 
     pub fn read(&self, buf: &mut [u8]) -> LinuxResult<usize> {
-        warn!("read data from fifo");
+        debug!("read data from fifo");
         loop {
             let mut rb = self.buffer.lock();
             if rb.available_read() == 0 {
-                warn!("no data in fifo");
                 if self.writers.load(Ordering::SeqCst) == 0 {
-                    warn!("no writer in fifo");
                     // when there is no writer and no data in the buffer, return EOF
                     return Ok(0);
                 } else {
-                    warn!("wait for data in fifo");
                     drop(rb);
                     sched_yield();
                     continue;
@@ -45,7 +43,7 @@ impl Fifo {
     }
 
     pub fn write(&self, buf: &[u8]) -> LinuxResult<usize> {
-        warn!("write data to fifo");
+        debug!("write data to fifo");
         loop {
             let mut rb = self.buffer.lock();
             if self.readers.load(Ordering::SeqCst) == 0 {
@@ -83,13 +81,11 @@ impl VfsNodeOps for FifoNode {
 
     // for fifo, offset is useless and ignored
     fn read_at(&self, _offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        warn!("read_at is not supported for fifo");
         Ok(self.fifo.read(buf).unwrap_or(0))
     }
 
     // for fifo, offset is useless and ignored
     fn write_at(&self, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
-        warn!("write_at is not supported for fifo");
         Ok(self.fifo.write(buf).unwrap_or(0))
     }
 
@@ -98,8 +94,16 @@ impl VfsNodeOps for FifoNode {
         self.fifo.readers.load(Ordering::SeqCst) > 0
     }
 
-    fn open_fifo(&self, read: bool, write: bool, non_blocking: bool) -> VfsResult {
-        debug!("open a fifo node");
+    fn open_fifo(
+        &self,
+        read: bool,
+        write: bool,
+        non_blocking: bool,
+    ) -> VfsResult<Option<VfsNodeRef>> {
+        debug!(
+            "open a fifo node: read={}, write={}, non_blocking={}",
+            read, write, non_blocking
+        );
         if read {
             self.fifo.readers.fetch_add(1, Ordering::SeqCst);
             if !non_blocking {
@@ -116,7 +120,7 @@ impl VfsNodeOps for FifoNode {
                 }
             }
         }
-        Ok(())
+        Ok(None)
     }
 
     fn release_fifo(&self, read: bool, write: bool) -> VfsResult {
