@@ -13,6 +13,8 @@ use core::{
     str,
 };
 
+use ruxfs::api::FileType;
+
 use axerrno::{LinuxError, LinuxResult};
 use axio::{Error, SeekFrom};
 use ruxfdtable::{FileLike, OpenFlags, RuxStat};
@@ -56,6 +58,20 @@ pub fn sys_openat(fd: c_int, path: *const c_char, flags: c_int, mode: ctypes::mo
             "sys_openat <= fd {} {:?}, {:?}, {:#o}",
             fd, path, flags, mode
         );
+        if let node = fops::lookup(&path) {
+            if node.clone()?.get_attr()?.is_fifo() {
+                // process error return in non-blocking mode
+                // note: blocking mode waiting logic is implemented in the file system/FIFO implementation
+                if flags.is_non_blocking() {
+                    if !flags.readable() && flags.writable() {
+                        if !node?.fifo_has_readers() {
+                            return Err(LinuxError::ENXIO);
+                        }
+                    }
+                }
+            } 
+        }
+
         add_file_like(open_file_like(&path, flags)?, flags)
     })
 }
@@ -409,6 +425,30 @@ pub fn sys_unlinkat(fd: c_int, pathname: *const c_char, flags: c_int) -> c_int {
             }
             Err(e) => return Err(e.into()),
         }
+        Ok(0)
+    })
+}
+
+/// Creates a new, empty file at the provided path.
+pub fn sys_mknodat(
+    fd: c_int,
+    pathname: *const c_char,
+    mode: ctypes::mode_t,
+    _dev: ctypes::dev_t,
+) -> c_int {
+    // TODO: implement permissions mode
+    syscall_body!(sys_mknodat, {
+        let path = parse_path_at(fd, pathname)?;
+        debug!(
+            "sys_mknodat <= fd: {}, pathname: {:?}, mode: {:x?}, dev: {:x?}",
+            fd, path, mode, _dev
+        );
+        let file_type = match mode & ctypes::S_IFMT {
+            ctypes::S_IFREG => FileType::File,
+            ctypes::S_IFIFO => FileType::Fifo,
+            _ => return Err(LinuxError::EAFNOSUPPORT),
+        };
+        ruxfs::api::create_node(&path, file_type)?;
         Ok(0)
     })
 }

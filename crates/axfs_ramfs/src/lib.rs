@@ -17,12 +17,14 @@ extern crate alloc;
 
 mod dir;
 mod file;
+mod fifo;
 
 #[cfg(test)]
 mod tests;
 
 pub use self::dir::DirNode;
 pub use self::file::FileNode;
+pub use self::fifo::FifoNode;
 
 use alloc::sync::Arc;
 use axfs_vfs::{AbsPath, VfsNodeRef, VfsOps, VfsResult};
