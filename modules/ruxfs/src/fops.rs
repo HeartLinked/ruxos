@@ -127,13 +127,11 @@ pub fn open_file_like(path: &AbsPath, flags: OpenFlags) -> AxResult<Arc<dyn File
     let node = open_abspath(path, flags)?;
     if node.get_attr()?.is_dir() {
         Ok(Arc::new(Directory::new(path.to_owned(), node, flags)))
-    } else if node.get_attr()?.is_file() {
-        Ok(Arc::new(File::new(path.to_owned(), node, flags)))
     } else if node.get_attr()?.is_fifo() {
         Ok(Arc::new(File::new(path.to_owned(), node, flags)))
     } else {
-        Err(AxError::Unsupported)
-    }
+        Ok(Arc::new(File::new(path.to_owned(), node, flags)))
+    } 
 }
 
 /// Create a file given an absolute path.
