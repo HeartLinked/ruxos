@@ -71,6 +71,7 @@ pub struct FifoNode {
 }
 
 impl FifoNode {
+    /// Create a new FIFO node.
     pub fn new(ino: u64) -> Self {
         Self {
             ino,
