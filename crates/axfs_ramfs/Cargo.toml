@@ -16,3 +16,4 @@ log = { workspace = true }
 axerrno = { path = "../axerrno" }
 ruxhal = { path = "../../modules/ruxhal" }
 ringbuffer = { path = "../ringbuffer" }
+axio = { path = "../axio" }

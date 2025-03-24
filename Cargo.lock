@@ -183,6 +183,7 @@ version = "0.1.0"
 dependencies = [
  "axerrno",
  "axfs_vfs",
+ "axio",
  "log",
  "ringbuffer",
  "ruxhal",

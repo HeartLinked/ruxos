@@ -186,6 +186,10 @@ impl FileLike for File {
         *self.flags.write() = flags;
         Ok(())
     }
+
+    fn flags(&self) -> OpenFlags {
+        *self.flags.read()
+    }
 }
 
 impl Read for File {

@@ -54,8 +54,8 @@ pub struct Signal {
     timer_interval: [Duration; 3],
 }
 
-unsafe extern "C" fn default_handler(signum: c_int) {
-    panic!("default_handler, signum: {}", signum);
+unsafe extern "C" fn default_handler(_signum: c_int) {
+    // panic!("default_handler, signum: {}", signum);
 }
 
 #[cfg(feature = "signal")]

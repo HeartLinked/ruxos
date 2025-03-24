@@ -53,6 +53,8 @@ mod macros;
 mod path;
 mod structs;
 
+use core::any::Any;
+
 use alloc::sync::Arc;
 use axerrno::{ax_err, AxError, AxResult};
 
@@ -99,16 +101,6 @@ pub trait VfsNodeOps: Send + Sync {
     /// Do something when the node is opened.
     /// For example, open some special nodes like `/dev/ptmx` should return a new node named `PtyMaster`
     fn open(&self) -> VfsResult<Option<VfsNodeRef>> {
-        Ok(None)
-    }
-
-    /// Do something when the node is opened as a fifo.
-    fn open_fifo(
-        &self,
-        _read: bool,
-        _write: bool,
-        _non_blocking: bool,
-    ) -> VfsResult<Option<VfsNodeRef>> {
         Ok(None)
     }
 
@@ -240,6 +232,11 @@ pub trait VfsNodeOps: Send + Sync {
         unimplemented!()
     }
 
+    /// Provides type-erased access to the underlying `Arc` for downcasting.
+    fn as_any_arc(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
+        unimplemented!()
+    }
+
     /// Create a new node with given `path` in the directory, recursively.
     ///
     /// Default implementation `create`s all prefix sub-paths sequentially,
@@ -261,11 +258,6 @@ pub trait VfsNodeOps: Send + Sync {
         self.create(path, ty)?;
 
         Ok(())
-    }
-
-    /// if the node is a fifo, check if there are readers
-    fn fifo_has_readers(&self) -> bool {
-        false
     }
 }
 

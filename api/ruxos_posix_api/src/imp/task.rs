@@ -31,6 +31,17 @@ pub fn sys_sched_yield() -> c_int {
     0
 }
 
+#[cfg(feature = "fd")]
+struct SchedYieldIfImpl;
+
+#[cfg(feature = "fd")]
+#[crate_interface::impl_interface]
+impl ruxfs::fifo::SchedYieldIf for SchedYieldIfImpl {
+    fn yield_now() {
+        sys_sched_yield();
+    }
+}
+
 /// Get current thread ID.
 pub fn sys_gettid() -> c_int {
     syscall_body!(sys_gettid,
