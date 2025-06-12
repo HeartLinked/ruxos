@@ -76,7 +76,7 @@ qemu_args-$(GRAPHIC) += \
 ifeq ($(CONSOLE), y)
   qemu_args-y += -display none
 else ifeq ($(GRAPHIC), n)
-  qemu_args-y += -nographic
+  qemu_args-y += -nographic -monitor tcp:127.0.0.1:55555,server,nowait
 endif
 
 ifeq ($(QEMU_LOG), y)

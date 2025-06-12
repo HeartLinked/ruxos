@@ -186,7 +186,7 @@ unsafe extern "C" fn save_current_context(_current_task: &mut TaskContext) {
         mrs     x20, tpidr_el0
         mov     x19, sp
         stp     x19, x20, [x0, 0 * 8]   // [x0] is parent's sp
-        ldp     x19, x20, [x0, 2 * 8]
+        // ldp     x19, x20, [x0, 2 * 8]
         isb
         ret",
         options(noreturn),
@@ -217,8 +217,8 @@ unsafe extern "C" fn save_fpstate_context(_current_fpstate: &mut FpState) {
         stp     q26, q27, [x0, 26 * 16]
         stp     q28, q29, [x0, 28 * 16]
         stp     q30, q31, [x0, 30 * 16]
-        str     x9, [x0, 64 *  8]
-        str     x10, [x0, 65 * 8]
+        str     w9, [x0, 64 *  8]
+        str     w10, [x0, 64 * 8 + 4]
         isb
         ret",
         options(noreturn),
@@ -281,8 +281,6 @@ unsafe extern "C" fn fpstate_switch(_current_fpstate: &mut FpState, _next_fpstat
     asm!(
         "
         // save fp/neon context
-        mrs     x9, fpcr
-        mrs     x10, fpsr
         stp     q0, q1, [x0, 0 * 16]
         stp     q2, q3, [x0, 2 * 16]
         stp     q4, q5, [x0, 4 * 16]
@@ -299,8 +297,11 @@ unsafe extern "C" fn fpstate_switch(_current_fpstate: &mut FpState, _next_fpstat
         stp     q26, q27, [x0, 26 * 16]
         stp     q28, q29, [x0, 28 * 16]
         stp     q30, q31, [x0, 30 * 16]
-        str     x9, [x0, 64 *  8]
-        str     x10, [x0, 65 * 8]
+
+        mrs     x9, fpcr
+        mrs     x10, fpsr
+        str     w9, [x0, 64 *  8]
+        str     w10, [x0, 64 * 8 + 4]
 
         // restore fp/neon context
         ldp     q0, q1, [x1, 0 * 16]
@@ -319,8 +320,11 @@ unsafe extern "C" fn fpstate_switch(_current_fpstate: &mut FpState, _next_fpstat
         ldp     q26, q27, [x1, 26 * 16]
         ldp     q28, q29, [x1, 28 * 16]
         ldp     q30, q31, [x1, 30 * 16]
-        ldr     x9, [x1, 64 * 8]
-        ldr     x10, [x1, 65 * 8]
+
+        ldr     w9, [x1, 64 * 8]
+        ldr     w10, [x1, 64 * 8 + 4]
+        uxtw    x9, w9
+        uxtw    x10, w10
         msr     fpcr, x9
         msr     fpsr, x10
 
